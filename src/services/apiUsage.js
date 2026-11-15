@@ -5,6 +5,7 @@ const BALANCE_KEY = 'xiaoshouji_api_balance_reference_v1';
 const PRICE_USD_PER_MILLION = {
   // Standard API prices per million tokens; estimates exclude non-token charges.
   'gpt-6-luna': { input: 0.10, cached: 0.01, output: 0.50 },
+  'gpt-6.1-terra': { input: 1.00, cached: 0.05, output: 5.00 },
   'gpt-5.6-luna': { input: 0.20, cached: 0.02, output: 1.20 },
   'gpt-5.6-terra': { input: 2, cached: 0.2, output: 12 },
   'gpt-4o-mini': { input: 0.15, cached: 0.075, output: 0.6 }
@@ -27,6 +28,7 @@ function localDay(iso) {
 function priceOf(model) {
   const name = String(model || '').toLowerCase();
   if (name.startsWith('gpt-6-luna')) return PRICE_USD_PER_MILLION['gpt-6-luna'];
+  if (name.startsWith('gpt-6.1-terra')) return PRICE_USD_PER_MILLION['gpt-6.1-terra'];
   if (name.startsWith('gpt-5.6-luna')) return PRICE_USD_PER_MILLION['gpt-5.6-luna'];
   if (name.startsWith('gpt-5.6-terra')) return PRICE_USD_PER_MILLION['gpt-5.6-terra'];
   if (name.startsWith('gpt-4o-mini')) return PRICE_USD_PER_MILLION['gpt-4o-mini'];
