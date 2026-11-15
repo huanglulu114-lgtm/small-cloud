@@ -233,7 +233,18 @@
               </select>
             </div>
           </div>
-          <p class="section-hint">已选 {{ selectedOpenAIModel }}。保存后下次生成消息生效，Cloudflare 继续保管你的密钥。</p>
+          <div class="section-label mt-4">推理强度（每个模型独立记忆）</div>
+          <div class="card-group">
+            <div class="form-row">
+              <label class="form-label" for="openai-effort-picker">思考档位</label>
+              <select id="openai-effort-picker" class="form-select" v-model="selectedReasoningEffort" @change="saveSelectedReasoningEffort">
+                <option v-for="option in reasoningEffortOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+            </div>
+          </div>
+          <p class="section-hint">下次请求会实际发送：{{ selectedOpenAIModel }} · reasoning_effort={{ selectedReasoningEffort }}。默认保留原来的低档设置；中、高档可能增加耗时与 Token 花费，不会偷偷换回低档。</p>
+          <p v-if="lastSuccessfulSelection" class="section-hint">最近一次成功调用：{{ lastSuccessfulSelection.model }} · {{ lastSuccessfulSelection.effort }}（{{ new Date(lastSuccessfulSelection.at).toLocaleString() }}）</p>
+          <p v-else class="section-hint">还没有记录到成功调用。模型权限若不允许，API 会报错，不会默默切换其他型号。</p>
           <div class="section-label mt-8">API 方案</div>
           <div class="card-group mt-4">
             <div
@@ -245,7 +256,7 @@
             >
               <span class="item-label">{{ p.name }}</span>
               <div class="item-right">
-                <span class="item-value">{{ p.apiFormat === 'anthropic' ? (p.model || '') : selectedOpenAIModel }}</span>
+                <span class="item-value">{{ p.apiFormat === 'anthropic' ? (p.model || '') : selectedOpenAIModel + ' · ' + selectedReasoningEffort }}</span>
                 <chevron-right />
               </div>
             </div>
@@ -369,7 +380,12 @@ import { ref, onMounted, onUnmounted, h, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import db, { apiProfileService, roleService, conversationService, messageService, assetService } from '../services/db';
 import { applySystemTheme, SYSTEM_THEME_KEY, SMS_THEME_KEY } from '../utils/themeSync';
-import { OPENAI_MODEL_OPTIONS, OPENAI_MODEL_STORAGE_KEY, getSelectedOpenAIModel } from '../config/openaiModels';
+import {
+  OPENAI_MODEL_OPTIONS, OPENAI_MODEL_STORAGE_KEY, getSelectedOpenAIModel,
+  OPENAI_REASONING_OPTIONS, OPENAI_REASONING_STORAGE_KEY,
+  getSelectedOpenAIReasoningEffort, saveSelectedOpenAIReasoningEffort,
+  getLastSuccessfulOpenAISelection
+} from '../config/openaiModels';
 import { PROACTIVE_ENABLED_KEY, PROACTIVE_WALLET_KEY } from '../services/proactiveMessages';
 import { getCloudSyncStatus, checkCloudSync, initializeCloudFromThisDevice } from '../services/cloudSync';
 
@@ -445,8 +461,22 @@ const allApps = [
 
 // ---- 状态数据 ----
 const openAIModelOptions = OPENAI_MODEL_OPTIONS;
+const reasoningEffortOptions = OPENAI_REASONING_OPTIONS;
 const selectedOpenAIModel = ref(getSelectedOpenAIModel());
-const saveSelectedOpenAIModel = () => localStorage.setItem(OPENAI_MODEL_STORAGE_KEY, selectedOpenAIModel.value);
+const selectedReasoningEffort = ref(getSelectedOpenAIReasoningEffort());
+const lastSuccessfulSelection = ref(getLastSuccessfulOpenAISelection());
+const saveSelectedOpenAIModel = () => {
+  localStorage.setItem(OPENAI_MODEL_STORAGE_KEY, selectedOpenAIModel.value);
+  selectedReasoningEffort.value = getSelectedOpenAIReasoningEffort(selectedOpenAIModel.value);
+};
+const saveSelectedReasoningEffort = () => {
+  saveSelectedOpenAIReasoningEffort(selectedOpenAIModel.value, selectedReasoningEffort.value);
+};
+const updateLastSuccessfulSelection = event => {
+  lastSuccessfulSelection.value = event.detail;
+};
+onMounted(() => window.addEventListener('smallcloud:model-used', updateLastSuccessfulSelection));
+onUnmounted(() => window.removeEventListener('smallcloud:model-used', updateLastSuccessfulSelection));
 const apiProfiles = ref([]);
 const editingProfile = ref({ name:'', apiKey:'', baseUrl:'', model:'' });
 const globalMinimax = ref({ apiKey:'', groupId:'' });
@@ -489,10 +519,13 @@ const seedCloud = async () => { await initializeCloudFromThisDevice(); syncStatu
 onMounted(() => window.addEventListener('smallcloud:sync-status', onSyncStatus));
 onUnmounted(() => window.removeEventListener('smallcloud:sync-status', onSyncStatus));
 const backupTableNames = () => db.tables.map(table => table.name);
-const BACKUP_LOCAL_STORAGE_KEYS = ['globalMinimax', 'useStreamAPI', 'useVercelProxy', AUTO_REPLY_KEY, PROACTIVE_ENABLED_KEY, PROACTIVE_WALLET_KEY, SYSTEM_THEME_KEY, SMS_THEME_KEY, 'userStatus', 'xiaoshouji_api_usage_v1', 'xiaoshouji_api_balance_reference_v1', OPENAI_MODEL_STORAGE_KEY];
+const BACKUP_LOCAL_STORAGE_KEYS = ['globalMinimax', 'useStreamAPI', 'useVercelProxy', AUTO_REPLY_KEY, PROACTIVE_ENABLED_KEY, PROACTIVE_WALLET_KEY, SYSTEM_THEME_KEY, SMS_THEME_KEY, 'userStatus', 'xiaoshouji_api_usage_v1', 'xiaoshouji_api_balance_reference_v1', OPENAI_MODEL_STORAGE_KEY, OPENAI_REASONING_STORAGE_KEY];
 
 const loadAll = async () => {
   apiProfiles.value = await apiProfileService.getAll();
+  selectedOpenAIModel.value = getSelectedOpenAIModel();
+  selectedReasoningEffort.value = getSelectedOpenAIReasoningEffort();
+  lastSuccessfulSelection.value = getLastSuccessfulOpenAISelection();
   const mm = localStorage.getItem('globalMinimax');
   if (mm) globalMinimax.value = JSON.parse(mm);
   useStreamAPI.value = localStorage.getItem('useStreamAPI') === 'true';
