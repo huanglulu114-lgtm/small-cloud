@@ -146,6 +146,12 @@ async function upload(local, owner, revision) {
 }
 
 async function applyRemote(remote, owner, expectedFingerprint) {
+  // Never wipe a half-written message draft when another device updates.
+  const active = document.activeElement;
+  if (active && (active.matches?.("textarea, input[type='text'], input:not([type]), [contenteditable='true']"))) {
+    setStatus("pending", "另一部手机有新记录，退出输入框后自动更新");
+    return;
+  }
   const fresh = await capture();
   if (fresh.fingerprint !== expectedFingerprint) {
     setStatus("conflict", "本机聊天刚有变化，已暂停覆盖，请再次检查");
@@ -160,6 +166,13 @@ async function applyRemote(remote, owner, expectedFingerprint) {
       !Array.isArray(payload.tables.messages))
     throw new Error("云端记录格式不正确，未修改本机记录");
 
+  // Recheck immediately before the destructive transaction. A new local
+  // message during decompression must never be overwritten.
+  const checkedAgain = await capture();
+  if (checkedAgain.fingerprint !== expectedFingerprint) {
+    setStatus("conflict", "同步时本机增加了新记录，已暂停以防覆盖");
+    return;
+  }
   const tables = syncedTables();
   // API credentials stay on their own device even when sharing model presets.
   const existingProfiles = db.apiProfiles ? await db.apiProfiles.toArray() : [];
