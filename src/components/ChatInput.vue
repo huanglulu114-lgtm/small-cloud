@@ -6,6 +6,13 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
         </svg>
       </button>
+      <button class="wx-input-btn wx-sticker-btn" @click.stop="openStickerPicker" title="发表情包" aria-label="发表情包">
+        <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M8 14c1 2 2.5 3 4 3s3-1 4-3" />
+          <path d="M8.5 9h.01M15.5 9h.01" stroke-linecap="round" stroke-width="2.4" />
+        </svg>
+      </button>
       <input
         ref="fileInput"
         type="file"
