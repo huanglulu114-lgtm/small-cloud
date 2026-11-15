@@ -1,5 +1,5 @@
 import { accessIdentity } from "../_shared/access.js";
-import { notionMemoryPageIds } from "../_shared/notionMemory.js";
+import { notionMemoryPageIds, notionToken } from "../_shared/notionMemory.js";
 
 // Only connection health is returned; no page contents or secret keys are exposed.
 export async function onRequestGet({ request, env }) {
@@ -12,8 +12,8 @@ export async function onRequestGet({ request, env }) {
   if (!identity) return reply({ connected: false, reason: "请先通过 Cloudflare Access 登录小手机" }, 403);
 
   const ids = notionMemoryPageIds(env);
-  if (!env.NOTION_TOKEN) {
-    return reply({ connected: false, reason: "缺少 Cloudflare 密钥 NOTION_TOKEN；记忆页 ID 已自动配置" });
+  if (!notionToken(env)) {
+    return reply({ connected: false, reason: "正式部署未收到 Notion 密钥。请检查 Pages 项目 small-cloud 的生产环境变量和密钥（NOTION_TOKEN），保存后要重新部署。记忆页 ID 已自动配置。" });
   }
   if (!ids.length) {
     return reply({ connected: false, reason: "Notion 记忆页 ID 格式不正确" });
@@ -25,7 +25,7 @@ export async function onRequestGet({ request, env }) {
   try {
     const resp = await fetch(
       "https://api.notion.com/v1/blocks/" + encodeURIComponent(ids[0]) + "/children?page_size=3", {
-        headers: { "Authorization": "Bearer " + env.NOTION_TOKEN, "Notion-Version": "2026-03-11" }
+        headers: { "Authorization": "Bearer " + notionToken(env), "Notion-Version": "2026-03-11" }
       }
     );
     if (!resp.ok) {
