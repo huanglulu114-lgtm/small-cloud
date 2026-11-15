@@ -85,7 +85,17 @@ export async function buildEnhancedSystemPrompt(role, contextMessages = [], opti
   parts.push(section('长期记忆', clipText(settings.longTermMemory, options.longTermMemoryMaxChars ?? 8000)));
 
   if (Array.isArray(options.memoryEntries) && options.memoryEntries.length) {
-    parts.push(section('相关记忆', options.memoryEntries.map(entry => `- ${entry.content}`).join('\n')));
+    const labels = {
+      relationship_event: '关系经历',
+      commitment: '承诺',
+      unresolved_topic: '未完成话题',
+      preference: '偏好',
+      user_fact: '用户事实',
+      character_state: '近期状态'
+    };
+    const lines = options.memoryEntries.map(entry =>
+      `- [${labels[entry.type] || '记忆'}] ${entry.content}`);
+    parts.push(section('关系与相关记忆', lines.join('\n')));
   }
 
   const diaryMemory = await buildDiaryMemoryPrompt(role, { enabled: options.includeDiaries !== false });
