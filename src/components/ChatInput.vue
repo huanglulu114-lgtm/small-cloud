@@ -105,7 +105,7 @@
           </div>
           <span>转账</span>
         </div>
-        <div class="action-item">
+        <div class="action-item" @click.stop="openStickerPicker">
           <div class="action-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <circle cx="12" cy="12" r="10"/>
@@ -119,6 +119,28 @@
       </div>
     </div>
   </transition>
+
+    <!-- 可以直接发送已收藏的表情包 -->
+    <div v-if="showStickerPicker" class="sticker-picker" @click.stop>
+      <div class="sticker-picker-head">
+        <span>选择表情包</span>
+        <button type="button" @click="showStickerPicker = false" aria-label="关闭表情包">×</button>
+      </div>
+      <div v-if="stickers.length" class="sticker-picker-grid">
+        <button
+          v-for="item in stickers"
+          :key="item.id"
+          type="button"
+          class="sticker-picker-item"
+          :title="item.name"
+          @click="sendSticker(item)"
+        >
+          <img :src="item.imageUrl" :alt="item.name" loading="lazy" />
+          <span>{{ item.name }}</span>
+        </button>
+      </div>
+      <div v-else class="sticker-picker-empty">还没有表情包，可以从「我 → 表情包库」添加。</div>
+    </div>
 
     <!-- 图片发送选项弹窗 -->
     <teleport to="body">
@@ -186,17 +208,19 @@ import { computed, ref } from 'vue';
 import { formatCents } from '../services/db';
 
 const props = defineProps({
+  stickers: { type: Array, default: () => [] },
   walletBalanceCents: {
     type: Number,
     default: 0
   }
 });
 
-const emit = defineEmits(['send', 'sendImage', 'generate', 'sendWallet']);
+const emit = defineEmits(['send', 'sendImage', 'generate', 'sendWallet', 'sendSticker']);
 
 const inputText = ref('');
 const fileInput = ref(null);
 const showActionSheet = ref(false);
+const showStickerPicker = ref(false);
 const pendingFile = ref(null);
 const pendingPreview = ref('');
 const walletSheetMode = ref('');
@@ -220,6 +244,16 @@ const onGenerate = () => {
 const onImageClick = () => {
   showActionSheet.value = false;
   fileInput.value?.click();
+};
+const openStickerPicker = () => {
+  showActionSheet.value = false;
+  showStickerPicker.value = true;
+  document.activeElement?.blur();
+};
+const sendSticker = (sticker) => {
+  if (!sticker?.imageUrl) return;
+  emit('sendSticker', sticker);
+  showStickerPicker.value = false;
 };
 
 const openWalletSheet = (mode) => {
@@ -272,10 +306,12 @@ const cancelImageSend = () => {
 
 const closeActionSheet = () => {
   showActionSheet.value = false;
+  showStickerPicker.value = false;
   closeWalletSheet();
 };
 
 const onPlusClick = () => {
+  showStickerPicker.value = false;
   showActionSheet.value = !showActionSheet.value;
   if (showActionSheet.value) {
     document.activeElement?.blur();
@@ -286,6 +322,34 @@ defineExpose({ closeActionSheet });
 </script>
 
 <style scoped>
+.sticker-picker {
+  padding: 10px 12px calc(14px + env(safe-area-inset-bottom));
+  background: var(--wx-white, #fff);
+  border-top: 1px solid rgba(0,0,0,.08);
+  max-height: min(38vh, 300px);
+  overflow-y: auto;
+}
+.sticker-picker-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 2px 4px 10px; font-size: 14px; font-weight: 600;
+  color: var(--wx-text-primary, #333);
+}
+.sticker-picker-head button {
+  border: 0; background: transparent; color: inherit; font-size: 25px; padding: 0 8px;
+}
+.sticker-picker-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.sticker-picker-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 0; background: transparent; border: 0; padding: 5px;
+  color: var(--wx-text-primary, #333); font-size: 11px;
+}
+.sticker-picker-item img { width: 64px; height: 64px; max-width: 100%; object-fit: contain; border-radius: 8px; }
+.sticker-picker-item span { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sticker-picker-empty { font-size: 13px; color: var(--wx-text-secondary, #888); padding: 20px 4px; text-align: center; }
+
 .input-container {
   position: relative;
   flex-shrink: 0;
