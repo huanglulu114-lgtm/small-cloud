@@ -16,14 +16,20 @@ export async function onRequestPost({ request, env }) {
   try {
     const raw = await request.text();
 
-    if (raw.length > 2000000) {
+    if (raw.length > 250000) {
       return reply({ error: { message: "请求过大" } }, 413);
     }
 
     const body = JSON.parse(raw);
 
-    if (!Array.isArray(body.messages) || !body.messages.length) {
-      return reply({ error: { message: "消息格式错误" } }, 400);
+    if (!Array.isArray(body.messages) ||
+        !body.messages.length ||
+        body.messages.length > 80 ||
+        !body.messages.every(m =>
+          m && ["system", "user", "assistant"].includes(m.role) &&
+          (typeof m.content === "string" || Array.isArray(m.content))
+        )) {
+      return reply({ error: { message: "消息格式错误或超出限制" } }, 400);
     }
 
     const response = await fetch(
@@ -37,7 +43,8 @@ export async function onRequestPost({ request, env }) {
         body: JSON.stringify({
           model: env.OPENAI_MODEL || "gpt-4o-mini",
           messages: body.messages,
-          stream: body.stream === true
+          stream: body.stream === true,
+          max_completion_tokens: 2048
         })
       }
     );
