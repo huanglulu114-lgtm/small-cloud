@@ -23,14 +23,33 @@ export async function ensureMemoryJob(roleId, { manual = false } = {}) {
   if (!manual && role.chatSettings?.autoMemoryEnabled !== true) return null;
 
   const all = await messageService.getContextMessagesByRole(roleId);
+
+  // Manual organization doubles as a relationship-history refresh: it may re-read a
+  // bounded recent window so improvements to extraction rules can take effect immediately.
+  // The job id is stable for the same recent window, preventing repeated clicks from
+  // repeatedly charging for exactly the same transcript.
+  if (manual) {
+    const source = all.slice(-Math.min(AUTO_THRESHOLD, all.length));
+    if (source.length < MANUAL_MINIMUM) return null;
+    const id = `memory:${roleId}:manual:${source[0].id}-${source[source.length - 1].id}`;
+    const existing = await contextJobService.get(id);
+    if (existing) return existing;
+    return await contextJobService.put({
+      id,
+      type: 'memory_compaction',
+      roleId: Number(roleId),
+      sourceMessageIds: source.map(message => message.id),
+      status: 'pending'
+    });
+  }
+
   const protectedIds = new Set(all.slice(-PROTECTED_TAIL).map(message => message.id));
   const jobs = await contextJobService.listByRole(roleId);
   const processed = new Set(jobs.filter(job => ['pending', 'running', 'done', 'failed'].includes(job.status)).flatMap(job => job.sourceMessageIds || []));
   const candidates = all.filter(message => !protectedIds.has(message.id) && !processed.has(message.id));
-  const minimum = manual ? MANUAL_MINIMUM : AUTO_THRESHOLD;
-  if (candidates.length < minimum) return null;
+  if (candidates.length < AUTO_THRESHOLD) return null;
 
-  const source = candidates.slice(0, manual ? Math.max(MANUAL_MINIMUM, Math.min(AUTO_THRESHOLD, candidates.length)) : AUTO_THRESHOLD);
+  const source = candidates.slice(0, AUTO_THRESHOLD);
   const id = makeJobId(roleId, source.map(message => message.id));
   const existing = await contextJobService.get(id);
   if (existing) return existing;
