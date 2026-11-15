@@ -318,6 +318,22 @@
           <div style="width:60px"></div>
         </div>
         <div class="scroll-area">
+          <div class="section-label mt-4">两部手机云端同步</div>
+          <div class="card-group">
+            <div class="card-item">
+              <span class="item-label">{{ syncStatus.label }}</span>
+            </div>
+            <div class="card-item" @click="syncNow">
+              <span class="item-label">立即检查同步</span>
+              <div class="item-right"><chevron-right /></div>
+            </div>
+            <div v-if="syncStatus.code === 'seed'" class="card-item no-border" @click="seedCloud">
+              <span class="item-label text-blue">从这台手机初始化云端记录</span>
+              <div class="item-right"><chevron-right /></div>
+            </div>
+          </div>
+          <p class="section-hint">首次只在保存完整聊天记录的原手机初始化。两部手机须使用同一 Cloudflare Access 邮箱；之后打开小手机会自动检查更新。出现记录冲突时不会覆盖任何一边。第三方 API 密钥不会上传。</p>
+          <div class="section-label mt-8">本地备份与恢复</div>
           <div class="card-group mt-4">
             <div class="card-item" @click="exportData">
               <span class="item-label">导出本地数据备份</span>
@@ -338,12 +354,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, h, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, h, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import db, { apiProfileService, roleService, conversationService, messageService, assetService } from '../services/db';
 import { applySystemTheme, SYSTEM_THEME_KEY, SMS_THEME_KEY } from '../utils/themeSync';
 import { OPENAI_MODEL_OPTIONS, OPENAI_MODEL_STORAGE_KEY, getSelectedOpenAIModel } from '../config/openaiModels';
 import { PROACTIVE_ENABLED_KEY, PROACTIVE_WALLET_KEY } from '../services/proactiveMessages';
+import { getCloudSyncStatus, checkCloudSync, initializeCloudFromThisDevice } from '../services/cloudSync';
 
 const router = useRouter();
 const activePage = ref('main'); 
@@ -434,6 +451,12 @@ const useVercelProxy = ref(false);
 const wallpaperPreview = ref('');
 const customIcons = ref({});
 const dataMsg = ref('');
+const syncStatus = ref(getCloudSyncStatus());
+const onSyncStatus = event => { syncStatus.value = event.detail; };
+const syncNow = async () => { syncStatus.value = await checkCloudSync(); };
+const seedCloud = async () => { await initializeCloudFromThisDevice(); syncStatus.value = getCloudSyncStatus(); };
+onMounted(() => window.addEventListener('smallcloud:sync-status', onSyncStatus));
+onUnmounted(() => window.removeEventListener('smallcloud:sync-status', onSyncStatus));
 const backupTableNames = () => db.tables.map(table => table.name);
 const BACKUP_LOCAL_STORAGE_KEYS = ['globalMinimax', 'useStreamAPI', 'useVercelProxy', AUTO_REPLY_KEY, PROACTIVE_ENABLED_KEY, PROACTIVE_WALLET_KEY, SYSTEM_THEME_KEY, SMS_THEME_KEY, 'userStatus', 'xiaoshouji_api_usage_v1', 'xiaoshouji_api_balance_reference_v1', OPENAI_MODEL_STORAGE_KEY];
 
@@ -602,6 +625,8 @@ const importData = async (event) => {
       }
     }
 
+    // Imported local data must not reuse the previous cloud sync revision.
+    localStorage.removeItem('smallCloudSyncMetaV1');
     dataMsg.value = '导入成功，正在刷新';
     await loadAll();
     setTimeout(() => window.location.reload(), 500);
