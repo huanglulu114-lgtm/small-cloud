@@ -38,7 +38,7 @@ const createTextBubbles = async (conversationId, text, callbacks) => {
   return created;
 };
 
-async function applyDirectives({ conversationId, role, rawText, channel, callbacks }) {
+async function applyDirectives({ conversationId, role, rawText, channel, trigger, callbacks }) {
   const parsed = parseMessageDirectives(rawText);
   const created = [];
   const settings = role.chatSettings || {};
@@ -78,15 +78,21 @@ async function applyDirectives({ conversationId, role, rawText, channel, callbac
 
   if (wallet) {
     try {
-      const message = await walletService.createIncoming({
-        conversationId,
-        roleId: role.id,
-        type: wallet.type,
-        amountCents: parseAmountToCents(wallet.amount),
-        note: wallet.note
-      });
-      created.push(message);
-      await emitCreated(callbacks, message);
+      const cents = parseAmountToCents(wallet.amount);
+      // Proactive surprises are fictional and small; they cannot move real money.
+      const allowed = trigger !== 'proactive' ||
+        (localStorage.getItem('smallCloudProactiveWalletEnabled') !== 'false' && cents <= 2000);
+      if (allowed) {
+        const message = await walletService.createIncoming({
+          conversationId,
+          roleId: role.id,
+          type: wallet.type,
+          amountCents: cents,
+          note: wallet.note
+        });
+        created.push(message);
+        await emitCreated(callbacks, message);
+      }
     } catch (error) {
       console.warn('钱包指令执行失败:', error.message);
     }
@@ -113,11 +119,21 @@ export const chatOrchestrator = {
     if (!conversationId) throw new Error('会话不存在');
     const role = await resolveChatRole(roleId);
     const directiveTypes = channel === 'sms' ? ['voice'] : undefined;
-    const packet = await buildContextPacket(role, { directiveTypes });
+    const proactive = trigger === 'proactive';
+    const packet = await buildContextPacket(role, proactive
+      ? { directiveTypes, tokenBudget: 3500, maxTurns: 8, includeDiaries: false }
+      : { directiveTypes });
+    const walletAllowed = localStorage.getItem('smallCloudProactiveWalletEnabled') !== 'false';
+    const proactivePrompt = proactive
+      ? '\n\n【主动联系】你是在一段安静时间之后主动给对方发消息，不是回复刚收到的提问。根据人物关系、近期真实对话，自然地表达一件想说或想问的事，通常一到两句即可，不要每天固定同样的问候，不要伪造刚发生的事实，也不用逼她回复。你可以偶尔自发发起小手机内的虚拟红包或转账，但不能频繁出现，更不是现实付款。' +
+        (walletAllowed
+          ? '若自然适合，可使用一次指令 [红包:5.20:想请你吃点好的] 或 [转账:6.66:给你买奶茶]，金额最多20元，纯虚拟。'
+          : '这次不要生成红包或转账指令。')
+      : '';
     let streamed = '';
     const useStream = localStorage.getItem('useStreamAPI') === 'true';
     const response = await callModel(
-      { ...role, systemPrompt: packet.systemPrompt, skipSystemPromptMerge: true },
+      { ...role, systemPrompt: packet.systemPrompt + proactivePrompt, skipSystemPromptMerge: true },
       packet.messages,
       useStream ? chunk => {
         streamed += chunk;
@@ -125,7 +141,7 @@ export const chatOrchestrator = {
       } : null
     );
     const rawText = useStream ? streamed || response : response;
-    const createdMessages = await applyDirectives({ conversationId, role, rawText, channel, callbacks });
+    const createdMessages = await applyDirectives({ conversationId, role, rawText, channel, trigger, callbacks });
     scheduleMemoryMaintenance(role.id);
     return { role, packet, rawText, createdMessages, trigger };
   },
