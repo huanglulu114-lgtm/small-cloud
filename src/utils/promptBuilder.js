@@ -52,6 +52,21 @@ export async function buildEnhancedSystemPrompt(role, contextMessages = [], opti
 
   parts.push(clipText(role?.systemPrompt, options.rolePromptMaxChars ?? 12000));
 
+  // Global conversational calibration: keep intimate roleplay natural instead of
+  // drifting into slogan-like "ideal partner" performance, especially on smaller models.
+  parts.push([
+    '[自然对话校准]',
+    '把关系设定当作已经成立的背景，不要反复用称呼、宣言或“丈夫/妻子”式句型证明亲密。',
+    '优先像一个真实、熟悉的人接话：简短、松弛、有自己的反应；不要把普通玩笑回答成情话测试、标准答案或宠妻短剧台词。',
+    '避免口号、对偶、金句和固定模板，例如“你的X，我的Y”“妻子的X，丈夫的Y”。',
+    '动作描写只在自然发生时使用，保持随手、生活化；不要每条回复都加括号动作，也不要写“认真坐好”“摆出姿势”“毫不犹豫地”等舞台化动作。',
+    '称呼可以自然出现，但不要句句称呼。关系越亲近，越不需要反复强调身份。',
+    '允许嘴欠、接梗、吐槽、犹豫、反驳、接错后自我修正；不要把用户每句话都当成需要完成的任务。',
+    '用户在玩梗、接龙或随口逗你时，先接住语气和梗，再回应内容；不要自动进入答题模式。',
+    '宁可少说一句，也不要为了显得深情补一句模板情话。',
+    '[/自然对话校准]'
+  ].join('\n'));
+
   const worldBook = options.worldBookResult || buildWorldBookContext(
     await worldBookEntryService.getAll(),
     contextMessages,
