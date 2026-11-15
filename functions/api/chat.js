@@ -114,13 +114,20 @@ export async function onRequestPost({ request, env }) {
 
     if (!Array.isArray(body.messages) ||
         !body.messages.length ||
-        body.messages.length > 80 ||
         !body.messages.every(m =>
           m && ["system", "user", "assistant"].includes(m.role) &&
           (typeof m.content === "string" || Array.isArray(m.content))
         )) {
-      return reply({ error: { message: "消息格式错误或超出限制" } }, 400);
+      return reply({ error: { message: "消息格式错误，请检查聊天内容" } }, 400);
     }
+
+    // The UI stores an assistant reply as several short bubbles. A normal
+    // 15-turn conversation can therefore exceed 80 API messages, even with
+    // a small token budget. Keep recent context rather than rejecting it.
+    // Do not touch any local chat history; only trim the outbound request.
+    const systemMessages = body.messages.filter(m => m.role === "system").slice(0, 2);
+    const recentMessages = body.messages.filter(m => m.role !== "system").slice(-120);
+    const requestMessages = [...systemMessages, ...recentMessages];
 
     // This paid chat endpoint always requires a verified Cloudflare Access
     // session on the production Pages host, even when Notion is not enabled.
@@ -132,7 +139,7 @@ export async function onRequestPost({ request, env }) {
     // The explicit "false" value is an emergency off switch.
     const notionEnabled = Boolean(env.NOTION_TOKEN && env.NOTION_MEMORY_PAGE_IDS &&
       env.NOTION_MEMORY_ENABLED !== "false");
-    let messages = body.messages;
+    let messages = requestMessages;
     if (notionEnabled) {
       try {
         const memory = await readNotionMemory(env);
