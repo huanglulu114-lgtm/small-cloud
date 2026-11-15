@@ -1,4 +1,4 @@
-import { apiProfileService, diaryService, messageService, parseAmountToCents, roleService, walletService } from './db';
+import { apiProfileService, diaryService, messageService, parseAmountToCents, roleService, stickerService, walletService } from './db';
 import { callClaude } from './claude';
 import { textToSpeech } from './minimax';
 import { buildContextPacket } from './contextBuilder';
@@ -53,10 +53,19 @@ async function applyDirectives({ conversationId, role, rawText, channel, trigger
 
   if (parsed.cleanText) created.push(...await createTextBubbles(conversationId, parsed.cleanText, callbacks));
 
-  for (const sticker of stickers) {
-    const message = await messageService.create(conversationId, 'assistant', `[表情:${sticker.name}]`, 'text');
-    created.push(message);
-    await emitCreated(callbacks, message);
+  // Only use a real saved sticker; don't leave raw [表情:...] text in chat.
+  if (stickers.length) {
+    const available = await stickerService.getAll();
+    for (const directive of stickers.slice(0, 2)) {
+      const match = available.find(item => item.name?.trim() === directive.name?.trim() && item.imageUrl);
+      if (!match) continue;
+      const message = await messageService.create(
+        conversationId, 'assistant', match.imageUrl, 'sticker', null,
+        { stickerName: match.name }
+      );
+      created.push(message);
+      await emitCreated(callbacks, message);
+    }
   }
 
   if (voice?.text) {
