@@ -1,3 +1,5 @@
+import { notionMemoryPageIds } from "../_shared/notionMemory.js";
+
 // Optional read-only Notion memories. Credentials belong in Cloudflare Secrets.
 function decodePart(part) {
   const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
@@ -49,8 +51,7 @@ async function verifiedAccess(request, env) {
 }
 async function readNotionMemory(env) {
   if (!env.NOTION_TOKEN) throw Error("Missing Notion token");
-  const ids = String(env.NOTION_MEMORY_PAGE_IDS || "").split(",")
-    .map(s => s.trim()).filter(s => /^[a-f0-9-]{32,36}$/i.test(s)).slice(0, 4);
+  const ids = notionMemoryPageIds(env);
   if (!ids.length) throw Error("Missing Notion page IDs");
   const headers = {
     "Authorization": "Bearer " + env.NOTION_TOKEN,
@@ -137,7 +138,7 @@ export async function onRequestPost({ request, env }) {
 
     // Notion reads start automatically once its two Cloudflare bindings exist.
     // The explicit "false" value is an emergency off switch.
-    const notionEnabled = Boolean(env.NOTION_TOKEN && env.NOTION_MEMORY_PAGE_IDS &&
+    const notionEnabled = Boolean(env.NOTION_TOKEN && notionMemoryPageIds(env).length &&
       env.NOTION_MEMORY_ENABLED !== "false");
     let messages = requestMessages;
     if (notionEnabled) {
