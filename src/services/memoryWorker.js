@@ -51,8 +51,19 @@ const parseJsonObject = text => {
   return JSON.parse(clean.slice(start, end + 1));
 };
 
-const memoryPrompt = `你是记忆整理器。根据聊天记录提取少量、长期有用且可追溯的事实，不要编造，也不要把普通寒暄存成记忆。
-只输出合法 JSON：{"memories":[{"type":"user_fact|preference|relationship_event|commitment|unresolved_topic|character_state","content":"简洁事实","keywords":["关键词"],"importance":1-5,"confidence":0-1}]}
+const memoryPrompt = `你是长期关系记忆整理器。根据聊天记录提取少量、长期有用且可追溯的事实，不要编造，也不要把普通寒暄、一次性动作或泛泛情话存成记忆。
+
+特别重视“关系经历”而不是只记用户资料：
+- relationship_event：会改变两人之后相处方式的具体事件，例如一次争执与和好、被接住/没接住的时刻、形成的共同习惯、只有两人懂的梗、亲密边界或偏好的磨合、信任变化、一次重要陪伴。内容尽量保留“发生了什么 + 对之后关系有什么影响”，不要只写“他们很相爱”。
+- commitment：明确说过要做到、避免或以后会坚持的事。
+- unresolved_topic：尚未解决、之后很可能继续谈的关系问题。
+- preference / user_fact：只保存未来确实会影响相处的稳定信息。
+- character_state：只保存持续一段时间且会影响近期互动的状态，不要记录瞬时情绪。
+
+当一段聊天里确实存在有意义的关系变化时，优先提取 1-3 条 relationship_event / commitment；没有就不要硬造。
+记忆要具体、克制、像真实共同经历，不写文学化总结，不替任何一方脑补未说出口的感受。
+
+只输出合法 JSON：{"memories":[{"type":"user_fact|preference|relationship_event|commitment|unresolved_topic|character_state","content":"简洁具体的事实","keywords":["关键词"],"importance":1-5,"confidence":0-1}]}
 如果没有值得保存的内容，输出 {"memories":[]}。`;
 
 const repairPrompt = `把上一段内容修复为合法 JSON。只允许返回 {"memories":[]} 结构，不要解释。`;
