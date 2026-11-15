@@ -1,4 +1,5 @@
 import { accessIdentity } from "../_shared/access.js";
+import { notionMemoryPageIds } from "../_shared/notionMemory.js";
 
 // Only connection health is returned; no page contents or secret keys are exposed.
 export async function onRequestGet({ request, env }) {
@@ -10,10 +11,12 @@ export async function onRequestGet({ request, env }) {
   const identity = await accessIdentity(request, env);
   if (!identity) return reply({ connected: false, reason: "请先通过 Cloudflare Access 登录小手机" }, 403);
 
-  const ids = String(env.NOTION_MEMORY_PAGE_IDS || "").split(",")
-    .map(x => x.trim()).filter(x => /^[a-f0-9-]{32,36}$/i.test(x));
-  if (!env.NOTION_TOKEN || !ids.length) {
-    return reply({ connected: false, reason: "Notion 密钥或记忆页 ID 尚未配置" });
+  const ids = notionMemoryPageIds(env);
+  if (!env.NOTION_TOKEN) {
+    return reply({ connected: false, reason: "缺少 Cloudflare 密钥 NOTION_TOKEN；记忆页 ID 已自动配置" });
+  }
+  if (!ids.length) {
+    return reply({ connected: false, reason: "Notion 记忆页 ID 格式不正确" });
   }
   if (env.NOTION_MEMORY_ENABLED === "false") {
     return reply({ connected: false, reason: "Notion 记忆功能已在服务器关闭" });
