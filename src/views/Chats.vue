@@ -39,7 +39,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import NavBar from '../components/NavBar.vue';
 import TabBar from '../components/TabBar.vue';
@@ -59,7 +59,11 @@ const sortedConversations = computed(() => {
 });
 
 onMounted(async () => {
+  window.addEventListener('smallcloud:proactive-message', loadConversations);
   await loadConversations();
+});
+onUnmounted(() => {
+  window.removeEventListener('smallcloud:proactive-message', loadConversations);
 });
 
 const loadConversations = async () => {
