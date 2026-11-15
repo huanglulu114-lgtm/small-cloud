@@ -3,22 +3,39 @@ function decodePart(part) {
   const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
   return Uint8Array.from(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, "=")), c => c.charCodeAt(0));
 }
+// Verify Cloudflare Access JWTs without a manual AUD lookup.
+// The fallback is restricted to the Pages production host, which MUST remain
+// protected by the Cloudflare Access application at the edge. Requests from
+// any other deployment hostname fail closed. Explicit AUD/team vars still pin
+// identity to the configured Access application when supplied.
 async function verifiedAccess(request, env) {
-  const host = String(env.CF_ACCESS_TEAM_DOMAIN || "").trim()
-    .replace(/^https:\/\//i, "").replace(/\/$/, "");
-  if (!/^[a-z0-9-]+\.cloudflareaccess\.com$/i.test(host) || !env.CF_ACCESS_AUD) return false;
+  const productionHost = "small-cloud-2zs.pages.dev";
+  if (new URL(request.url).hostname.toLowerCase() !== productionHost) return false;
   const parts = String(request.headers.get("Cf-Access-Jwt-Assertion") || "").split(".");
   if (parts.length !== 3) return false;
   try {
     const header = JSON.parse(new TextDecoder().decode(decodePart(parts[0])));
     const payload = JSON.parse(new TextDecoder().decode(decodePart(parts[1])));
-    const issuer = "https://" + host;
+    const issuer = String(payload.iss || "").replace(/\\/$/, "");
+    const url = new URL(issuer);
+    if (url.protocol !== "https:" || url.username || url.password || url.port ||
+      !/^[a-z0-9-]+\\.cloudflareaccess\\.com$/i.test(url.hostname) ||
+      url.pathname !== "/" || url.search || url.hash) return false;
+
+    const configuredTeam = String(env.CF_ACCESS_TEAM_DOMAIN || "").trim()
+      .replace(/^https:\\/\\//i, "").replace(/\\/$/, "").toLowerCase();
+    if (configuredTeam && configuredTeam !== url.hostname.toLowerCase()) return false;
+
+    const auds = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    if (!auds.length || !auds.every(a => typeof a === "string" &&
+      /^[a-f0-9]{32,64}$/i.test(a))) return false;
+    if (env.CF_ACCESS_AUD && !auds.includes(env.CF_ACCESS_AUD)) return false;
+
     const now = Date.now() / 1000;
-    if (header.alg !== "RS256" || !header.kid || payload.iss !== issuer ||
-        payload.exp <= now || (payload.nbf && payload.nbf > now) ||
-        !(Array.isArray(payload.aud)
-          ? payload.aud.includes(env.CF_ACCESS_AUD)
-          : payload.aud === env.CF_ACCESS_AUD)) return false;
+    if (header.alg !== "RS256" || !header.kid || !Number.isFinite(payload.exp) ||
+      payload.exp <= now || (payload.nbf && payload.nbf > now) ||
+      (payload.iat && payload.iat > now + 30)) return false;
+
     const response = await fetch(issuer + "/cdn-cgi/access/certs");
     if (!response.ok) return false;
     const keys = (await response.json()).keys || [];
@@ -105,16 +122,18 @@ export async function onRequestPost({ request, env }) {
       return reply({ error: { message: "消息格式错误或超出限制" } }, 400);
     }
 
-    // Enabling server-side memories requires a valid Cloudflare Access session.
-    // When Access settings are supplied, all calls are protected, not just Notion.
-    const useAccess = Boolean(env.CF_ACCESS_AUD || env.CF_ACCESS_TEAM_DOMAIN ||
-      env.NOTION_MEMORY_ENABLED === "true");
-    if (useAccess && !(await verifiedAccess(request, env))) {
+    // This paid chat endpoint always requires a verified Cloudflare Access
+    // session on the production Pages host, even when Notion is not enabled.
+    if (!(await verifiedAccess(request, env))) {
       return reply({ error: { message: "请先通过 Cloudflare Access 验证身份" } }, 403);
     }
 
+    // Notion reads start automatically once its two Cloudflare bindings exist.
+    // The explicit "false" value is an emergency off switch.
+    const notionEnabled = Boolean(env.NOTION_TOKEN && env.NOTION_MEMORY_PAGE_IDS &&
+      env.NOTION_MEMORY_ENABLED !== "false");
     let messages = body.messages;
-    if (env.NOTION_MEMORY_ENABLED === "true") {
+    if (notionEnabled) {
       try {
         const memory = await readNotionMemory(env);
         if (memory) {
