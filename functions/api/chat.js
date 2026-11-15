@@ -16,14 +16,14 @@ async function verifiedAccess(request, env) {
   try {
     const header = JSON.parse(new TextDecoder().decode(decodePart(parts[0])));
     const payload = JSON.parse(new TextDecoder().decode(decodePart(parts[1])));
-    const issuer = String(payload.iss || "").replace(/\\/$/, "");
+    const issuer = String(payload.iss || "").replace(/\/$/, "");
     const url = new URL(issuer);
     if (url.protocol !== "https:" || url.username || url.password || url.port ||
-      !/^[a-z0-9-]+\\.cloudflareaccess\\.com$/i.test(url.hostname) ||
+      !/^[a-z0-9-]+\.cloudflareaccess\.com$/i.test(url.hostname) ||
       url.pathname !== "/" || url.search || url.hash) return false;
 
     const configuredTeam = String(env.CF_ACCESS_TEAM_DOMAIN || "").trim()
-      .replace(/^https:\\/\\//i, "").replace(/\\/$/, "").toLowerCase();
+      .replace(/^https:\/\//i, "").replace(/\/$/, "").toLowerCase();
     if (configuredTeam && configuredTeam !== url.hostname.toLowerCase()) return false;
 
     const auds = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
