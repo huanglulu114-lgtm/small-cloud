@@ -319,12 +319,20 @@ const replyPreview = computed(() => {
   return `${author}: ${String(text).replace(/\s+/g, ' ').slice(0, 44)}`;
 });
 
+const escapeHtml = value => String(value ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 const parseEmoji = (text) => {
   if (!text) return '';
-  return text.replace(/\[表情[：:]\s*([^\]]+)\]/g, (match, emojiName) => {
+  // Never render raw model or user text as HTML. Only trusted local sticker
+  // data URLs are promoted to image elements.
+  return escapeHtml(text).replace(/\[表情[：:]\s*([^\]]+)\]/g, (match, emojiName) => {
     const name = emojiName.trim();
     const sticker = props.linkedStickers.find(s => s.name === name);
-    return sticker?.imageUrl ? `<img class="emoji-img" src="${sticker.imageUrl}" alt="${name}" />` : `[${name}]`;
+    const safeImage = sticker?.imageUrl && /^(data:image\/(?:png|jpeg|webp|gif);base64,|https:\/\/)/i.test(sticker.imageUrl)
+      ? escapeHtml(sticker.imageUrl) : '';
+    return safeImage ? `<img class="emoji-img" src="${safeImage}" alt="${escapeHtml(name)}" />` : `[${escapeHtml(name)}]`;
   });
 };
 </script>
