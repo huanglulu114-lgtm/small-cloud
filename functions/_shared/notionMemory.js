@@ -9,3 +9,11 @@ export function notionMemoryPageIds(env) {
   return raw.split(",").map(value => value.trim())
     .filter(value => /^[a-f0-9-]{32,36}$/i.test(value)).slice(0, 4);
 }
+
+
+// Read the canonical Cloudflare secret; also support the original lowercase
+// name used in the first setup so users do not have to recreate credentials.
+// No secret value is ever returned to the browser or committed to GitHub.
+export function notionToken(env) {
+  return env.NOTION_TOKEN || env.notion || env.NOTION || "";
+}
