@@ -192,6 +192,17 @@
           <div style="width:60px"></div>
         </div>
         <div class="scroll-area">
+          <div class="section-label mt-4">OpenAI 默认模型（所有聊天角色共用）</div>
+          <div class="card-group">
+            <div class="form-row">
+              <label class="form-label" for="openai-model-picker">选择模型</label>
+              <select id="openai-model-picker" class="form-select" v-model="selectedOpenAIModel" @change="saveSelectedOpenAIModel">
+                <option v-for="option in openAIModelOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
+              </select>
+            </div>
+          </div>
+          <p class="section-hint">已选 {{ selectedOpenAIModel }}。保存后下次生成消息生效，Cloudflare 继续保管你的密钥。</p>
+          <div class="section-label mt-8">API 方案</div>
           <div class="card-group mt-4">
             <div
               v-for="(p, i) in apiProfiles"
@@ -202,7 +213,7 @@
             >
               <span class="item-label">{{ p.name }}</span>
               <div class="item-right">
-                <span class="item-value">{{ p.model || '' }}</span>
+                <span class="item-value">{{ p.apiFormat === 'anthropic' ? (p.model || '') : selectedOpenAIModel }}</span>
                 <chevron-right />
               </div>
             </div>
@@ -230,7 +241,7 @@
             <div v-if="editingProfile.apiFormat === 'anthropic'" class="form-row"><label class="form-label">模型</label><input class="form-input" v-model="editingProfile.model" placeholder="Claude 模型 ID" /></div>
             <div v-if="editingProfile.apiFormat !== 'anthropic'" class="form-row">
               <label class="form-label">API 接入</label>
-              <span class="pill-value">由 Cloudflare 服务端管理密钥，默认 GPT-5.6 Terra</span>
+              <span class="pill-value">Cloudflare 密钥 · {{ selectedOpenAIModel }}</span>
             </div>
             <div class="form-row no-border">
               <label class="form-label">API格式</label>
@@ -299,6 +310,7 @@ import { ref, onMounted, h, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import db, { apiProfileService, roleService, conversationService, messageService, assetService } from '../services/db';
 import { applySystemTheme, SYSTEM_THEME_KEY, SMS_THEME_KEY } from '../utils/themeSync';
+import { OPENAI_MODEL_OPTIONS, OPENAI_MODEL_STORAGE_KEY, getSelectedOpenAIModel } from '../config/openaiModels';
 
 const router = useRouter();
 const activePage = ref('main'); 
@@ -371,6 +383,9 @@ const allApps = [
 ];
 
 // ---- 状态数据 ----
+const openAIModelOptions = OPENAI_MODEL_OPTIONS;
+const selectedOpenAIModel = ref(getSelectedOpenAIModel());
+const saveSelectedOpenAIModel = () => localStorage.setItem(OPENAI_MODEL_STORAGE_KEY, selectedOpenAIModel.value);
 const apiProfiles = ref([]);
 const editingProfile = ref({ name:'', apiKey:'', baseUrl:'', model:'' });
 const globalMinimax = ref({ apiKey:'', groupId:'' });
@@ -380,7 +395,7 @@ const wallpaperPreview = ref('');
 const customIcons = ref({});
 const dataMsg = ref('');
 const backupTableNames = () => db.tables.map(table => table.name);
-const BACKUP_LOCAL_STORAGE_KEYS = ['globalMinimax', 'useStreamAPI', 'useVercelProxy', SYSTEM_THEME_KEY, SMS_THEME_KEY, 'userStatus', 'xiaoshouji_api_usage_v1', 'xiaoshouji_api_balance_reference_v1'];
+const BACKUP_LOCAL_STORAGE_KEYS = ['globalMinimax', 'useStreamAPI', 'useVercelProxy', SYSTEM_THEME_KEY, SMS_THEME_KEY, 'userStatus', 'xiaoshouji_api_usage_v1', 'xiaoshouji_api_balance_reference_v1', OPENAI_MODEL_STORAGE_KEY];
 
 const loadAll = async () => {
   apiProfiles.value = await apiProfileService.getAll();
@@ -406,9 +421,10 @@ onMounted(loadAll);
 
 // ---- 操作逻辑 ----
 const editProfile = (p) => { editingProfile.value = { ...p }; activePage.value = 'editProfile'; };
-const newProfile  = ()  => { editingProfile.value = { name:'', apiKey:'', baseUrl:'', model:'gpt-4o', apiFormat:'openai' }; activePage.value = 'editProfile'; };
+const newProfile  = ()  => { editingProfile.value = { name:'', apiKey:'', baseUrl:'', model:selectedOpenAIModel.value, apiFormat:'openai' }; activePage.value = 'editProfile'; };
 const saveProfile = async () => {
   if (!editingProfile.value.name) return alert('请填写方案名称');
+  if (editingProfile.value.apiFormat !== 'anthropic') editingProfile.value.model = selectedOpenAIModel.value;
   if (editingProfile.value.id) await apiProfileService.update(editingProfile.value.id, editingProfile.value);
   else await apiProfileService.create(editingProfile.value);
   await loadAll(); activePage.value = 'api';
