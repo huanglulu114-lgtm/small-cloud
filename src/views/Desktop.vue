@@ -33,26 +33,26 @@
             </div>
             <span class="card-label">微信</span>
           </div>
-          <div class="app-cell">
+          <div class="app-cell" @click="go('/stickers')">
             <div class="small-card">
-              <img v-if="customIcons.forum" :src="customIcons.forum" class="custom-icon" />
-              <component v-else :is="ForumIcon" />
+              <img v-if="customIcons.sticker" :src="customIcons.sticker" class="custom-icon" />
+              <component v-else :is="StickerIcon" />
             </div>
-            <span class="card-label">论坛</span>
+            <span class="card-label">表情包</span>
           </div>
-          <div class="app-cell">
+          <div class="app-cell" @click="go('/char')">
             <div class="small-card">
-              <img v-if="customIcons.search" :src="customIcons.search" class="custom-icon" />
-              <component v-else :is="SearchIcon" />
+              <img v-if="customIcons.char" :src="customIcons.char" class="custom-icon" />
+              <component v-else :is="CharIcon" />
             </div>
-            <span class="card-label">查手机</span>
+            <span class="card-label">角色记忆</span>
           </div>
-          <div class="app-cell">
+          <div class="app-cell" @click="go('/moments')">
             <div class="small-card">
-              <img v-if="customIcons.date" :src="customIcons.date" class="custom-icon" />
-              <component v-else :is="DateIcon" />
+              <img v-if="customIcons.moments" :src="customIcons.moments" class="custom-icon" />
+              <component v-else :is="MomentsIcon" />
             </div>
-            <span class="card-label">约会</span>
+            <span class="card-label">朋友圈</span>
           </div>
         </div>
         <div class="large-card square right-blank" @click="widgetInput.click()">
@@ -69,26 +69,26 @@
           <span class="rect-sub">记录今天的心情...</span>
         </div>
         <div class="grid-2x2">
-          <div class="app-cell" @click="go('/games')">
+          <div class="app-cell" @click="go('/contacts')">
             <div class="small-card">
-              <img v-if="customIcons.games" :src="customIcons.games" class="custom-icon" />
-              <component v-else :is="GameIcon" />
+              <img v-if="customIcons.contacts" :src="customIcons.contacts" class="custom-icon" />
+              <component v-else :is="ContactsIcon" />
             </div>
-            <span class="card-label">游戏</span>
+            <span class="card-label">联系人</span>
           </div>
-          <div class="app-cell">
+          <div class="app-cell" @click="go('/world-book')">
             <div class="small-card">
-              <img v-if="customIcons.read" :src="customIcons.read" class="custom-icon" />
-              <component v-else :is="ReadIcon" />
+              <img v-if="customIcons.world" :src="customIcons.world" class="custom-icon" />
+              <component v-else :is="WorldIcon" />
             </div>
-            <span class="card-label">阅读</span>
+            <span class="card-label">世界书</span>
           </div>
-          <div class="app-cell">
+          <div class="app-cell" @click="go('/style-import')">
             <div class="small-card">
-              <img v-if="customIcons.gacha" :src="customIcons.gacha" class="custom-icon" />
-              <component v-else :is="GachaIcon" />
+              <img v-if="customIcons.style" :src="customIcons.style" class="custom-icon" />
+              <component v-else :is="StyleIcon" />
             </div>
-            <span class="card-label">账本</span>
+            <span class="card-label">美化</span>
           </div>
           <div class="app-cell" @click="go('/settings')">
             <div class="small-card">
@@ -101,25 +101,6 @@
           </div>
         </section>
 
-        <section class="desktop-page desktop-page-secondary">
-          <div class="app-cell char-app-cell animate-enter" style="--delay: 0.15s" title="角色设定和记忆" @click="go('/char')">
-            <div class="small-card char-small-card">
-              <component :is="CharIcon" class="icon-svg char-icon" />
-              <span class="char-memory-dot"></span>
-            </div>
-            <span class="card-label">char</span>
-          </div>
-          <div class="app-cell char-app-cell animate-enter" style="--delay: 0.2s" title="导入 CSS 美化" @click="go('/style-import')">
-            <div class="small-card">
-              <component :is="StyleIcon" class="icon-svg style-icon" />
-            </div>
-            <span class="card-label">美化</span>
-          </div>
-        </section>
-      </div>
-      <div class="page-dots" aria-hidden="true">
-        <span class="dot" :class="{ active: activeDesktopPage === 0 }"></span>
-        <span class="dot" :class="{ active: activeDesktopPage === 1 }"></span>
       </div>
     </div>
 
@@ -129,13 +110,13 @@
           <component :is="WechatIcon" class="icon-svg" />
           <span>短信</span>
         </div>
-        <div class="dock-item">
-          <component :is="RegexIcon" class="icon-svg" />
-          <span>正则</span>
+        <div class="dock-item" @click="go('/diary')">
+          <component :is="DiaryIcon" class="icon-svg" />
+          <span>日记</span>
         </div>
-        <div class="dock-item" @click="go('/world-book')">
-          <component :is="WorldIcon" class="icon-svg" />
-          <span>世界书</span>
+        <div class="dock-item" @click="go('/me')">
+          <component :is="ContactsIcon" class="icon-svg" />
+          <span>我</span>
         </div>
       </div>
     </div>
@@ -165,7 +146,7 @@ const desktopPagesRef = ref(null);
 const activeDesktopPage = ref(0);
 
 const ASSET_KEYS = ['desktopWallpaper', 'desktop_avatar', 'desktop_widget',
-  ...['chat','forum','search','date','diary','games','read','gacha','settings','wechat','regex','world'].map(id => `icon_${id}`)];
+  ...['chat','sticker','char','moments','diary','contacts','world','style','settings','wechat'].map(id => `icon_${id}`)];
 
 onMounted(async () => {
   timer = setInterval(() => { now.value = new Date(); }, 1000);
@@ -181,7 +162,7 @@ onMounted(async () => {
   widgetImage.value = await assetService.get('desktop_widget') || '';
   quoteText.value   = localStorage.getItem('desktop_quote') || '';
   const icons = {};
-  for (const id of ['chat','forum','search','date','diary','games','read','gacha','settings','wechat','regex','world']) {
+  for (const id of ['chat','sticker','char','moments','diary','contacts','world','style','settings','wechat']) {
     icons[id] = await assetService.get(`icon_${id}`) || '';
   }
   customIcons.value = icons;
@@ -267,6 +248,9 @@ const SettingsIcon = mkIcon(['M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 
 const WechatIcon = mkIcon(['M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z']);
 const RegexIcon = mkIcon(['M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4']);
 const WorldIcon = mkIcon(['M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z']);
+const StickerIcon = mkIcon(['M12 2a10 10 0 110 20 10 10 0 010-20z', 'M8 10h.01', 'M16 10h.01', 'M7.5 14c1.2 2 2.9 3 4.5 3s3.3-1 4.5-3']);
+const MomentsIcon = mkIcon(['M4 7h4l2-3h4l2 3h4v12H4V7z', 'M12 10a4 4 0 100 8 4 4 0 000-8z']);
+const ContactsIcon = mkIcon(['M15 20v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2', 'M8.5 10a4 4 0 100-8 4 4 0 000 8z', 'M19 20v-2a4 4 0 00-3-3.9', 'M16 2a4 4 0 010 7.8']);
 const CharIcon = mkIcon(['M6 3.5h12a2 2 0 012 2v15l-4-2-4 2-4-2-4 2v-15a2 2 0 012-2z', 'M9 8h6', 'M9 11.5h4', 'M15.5 13.5a2 2 0 10-4 0 2 2 0 004 0z', 'M10 18a4 4 0 018 0']);
 const StyleIcon = mkIcon(['M4 20h16', 'M6 16l8.5-8.5a2.1 2.1 0 013 3L9 19H6v-3z', 'M14 6l4 4', 'M5 7h4', 'M7 5v4']);
 
