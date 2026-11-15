@@ -140,6 +140,7 @@ export async function onRequestPost({ request, env }) {
           model: env.OPENAI_MODEL || "gpt-5.6-terra",
           messages,
           stream: body.stream === true,
+          ...(body.stream === true ? { stream_options: { include_usage: true } } : {}),
           reasoning_effort: "low",
           max_completion_tokens: 4096
         })
