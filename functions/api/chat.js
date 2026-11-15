@@ -128,6 +128,12 @@ export async function onRequestPost({ request, env }) {
       }
     }
 
+    // Model choice is restricted to verified IDs; never accept arbitrary expensive IDs.
+    const supportedModels = new Set(["gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-terra"]);
+    const model = typeof body.model === "string" && supportedModels.has(body.model)
+      ? body.model
+      : supportedModels.has(env.OPENAI_MODEL) ? env.OPENAI_MODEL : "gpt-6-luna";
+
     const response = await fetch(
       "https://api.openai.com/v1/chat/completions",
       {
@@ -137,7 +143,7 @@ export async function onRequestPost({ request, env }) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: env.OPENAI_MODEL || "gpt-5.6-terra",
+          model,
           messages,
           stream: body.stream === true,
           ...(body.stream === true ? { stream_options: { include_usage: true } } : {}),
