@@ -168,8 +168,9 @@ async function handleOpenAIStream(response, onChunk) {
 export async function callClaude(role, messages, onChunk = null) {
   const { apiKey, baseUrl, model, apiFormat, systemPrompt, skipSystemPromptMerge = false } = role;
 
-  if (!apiKey) {
-    throw new Error('请配置 API Key');
+  // OpenAI 使用服务器端加密密钥；Anthropic 保持原有客户端配置。
+  if (apiFormat === 'anthropic' && !apiKey) {
+    throw new Error('请配置 Anthropic API Key');
   }
 
   // 聊天界面会先通过 promptBuilder 统一拼接完整提示词，避免重复追加内置指令。
@@ -183,7 +184,7 @@ export async function callClaude(role, messages, onChunk = null) {
   // 根据 API 格式构建请求
   if (apiFormat === 'anthropic') {
     return await callAnthropicAPI(baseUrl, apiKey, model, finalSystemPrompt, messages, onChunk);
-  } else if (apiFormat === 'openai') {
+  } else if (!apiFormat || apiFormat === 'openai') {
     return await callOpenAIAPI(baseUrl, apiKey, model, finalSystemPrompt, messages, onChunk);
   } else {
     throw new Error('不支持的 API 格式');
@@ -246,37 +247,17 @@ async function callAnthropicAPI(baseUrl, apiKey, model, systemPrompt, messages, 
  */
 async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onChunk) {
   const useStream = localStorage.getItem('useStreamAPI') === 'true';
-  const useProxy = useVercelProxy();
-
-  // 转换消息格式（添加 system 消息）
   const openaiMessages = systemPrompt
     ? [{ role: 'system', content: systemPrompt }, ...messages]
     : messages;
 
-  // 构建 API URL
-  const url = baseUrl
-    ? (baseUrl.endsWith('/chat/completions') ? baseUrl :
-       baseUrl.endsWith('/v1') ? `${baseUrl}/chat/completions` :
-       `${baseUrl}/v1/chat/completions`)
-    : 'https://api.openai.com/v1/chat/completions';
-
-  const requestBody = {
-    model: model || 'gpt-3.5-turbo',
-    messages: openaiMessages,
-    stream: useStream
-  };
-
-  const response = await fetchWithRetry(useProxy ? CHAT_PROXY_ENDPOINT : url, {
+  // 从同源 Cloudflare Pages Function 调用 OpenAI。
+  // API Key 只存在 Cloudflare 的 OPENAI_API_KEY Secret 中，不发送到浏览器。
+  // 模型由服务器的 OPENAI_MODEL 变量决定（默认 gpt-4o-mini）。
+  const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
     method: 'POST',
-    headers: useProxy
-      ? { 'Content-Type': 'application/json' }
-      : {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-    body: JSON.stringify(useProxy
-      ? { ...requestBody, apiKey, baseUrl, apiFormat: 'openai' }
-      : requestBody)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: openaiMessages, stream: useStream })
   });
 
   if (!response.ok) {
@@ -284,22 +265,21 @@ async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onC
     throw new Error(error.error?.message || `API 请求失败: ${response.status}`);
   }
 
-  // 流式响应（useStream=true，或服务端强制返回了 SSE 格式）
   const isSSE = (response.headers.get('Content-Type') || '').includes('text/event-stream');
   if (useStream || isSSE) {
     return await handleOpenAIStream(response, onChunk);
   }
 
   const data = await response.json();
-  return data.choices[0].message.content;
+  return data.choices?.[0]?.message?.content || '';
 }
 
 export async function callClaudeVision(role, imageBase64, mimeType, contextMessages = []) {
   const { apiKey, baseUrl, model, apiFormat, systemPrompt } = role;
   const useProxy = useVercelProxy();
 
-  if (!apiKey) {
-    throw new Error('请配置 API Key');
+  if (apiFormat === 'anthropic' && !apiKey) {
+    throw new Error('请配置 Anthropic API Key');
   }
 
   // 合并内置提示词和用户提示词
@@ -356,7 +336,7 @@ export async function callClaudeVision(role, imageBase64, mimeType, contextMessa
     return data.content[0].text;
 
   } else {
-    // OpenAI 格式
+    // OpenAI 图像消息同样使用服务器端的 API Key。
     const openaiImageMessage = {
       role: 'user',
       content: [
@@ -368,30 +348,10 @@ export async function callClaudeVision(role, imageBase64, mimeType, contextMessa
       ? [{ role: 'system', content: finalSystemPrompt }, ...contextMessages, openaiImageMessage]
       : [...contextMessages, openaiImageMessage];
 
-    // 构建 API URL
-    const url = baseUrl
-      ? (baseUrl.endsWith('/chat/completions') ? baseUrl :
-         baseUrl.endsWith('/v1') ? `${baseUrl}/chat/completions` :
-         `${baseUrl}/v1/chat/completions`)
-      : 'https://api.openai.com/v1/chat/completions';
-
-    const requestBody = {
-      model: model || 'gpt-4-vision-preview',
-      max_tokens: 4096,
-      messages
-    };
-
-    const response = await fetchWithRetry(useProxy ? CHAT_PROXY_ENDPOINT : url, {
+    const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
       method: 'POST',
-      headers: useProxy
-        ? { 'Content-Type': 'application/json' }
-        : {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-      body: JSON.stringify(useProxy
-        ? { ...requestBody, apiKey, baseUrl, apiFormat: 'openai' }
-        : requestBody)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, stream: false })
     });
 
     if (!response.ok) {
@@ -399,7 +359,7 @@ export async function callClaudeVision(role, imageBase64, mimeType, contextMessa
       throw new Error(error.error?.message || `API 请求失败: ${response.status}`);
     }
     const data = await response.json();
-    return data.choices[0].message.content;
+    return data.choices?.[0]?.message?.content || '';
   }
 }
 
