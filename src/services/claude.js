@@ -1,6 +1,7 @@
 // Claude API 调用服务
 import { mergeSystemPrompts } from '../config/systemPrompts';
 import { recordApiUsage } from './apiUsage';
+import { getSelectedOpenAIModel } from '../config/openaiModels';
 
 const CHAT_PROXY_ENDPOINT = '/api/chat';
 const USE_VERCEL_PROXY_KEY = 'useVercelProxy';
@@ -255,11 +256,11 @@ async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onC
 
   // 从同源 Cloudflare Pages Function 调用 OpenAI。
   // API Key 只存在 Cloudflare 的 OPENAI_API_KEY Secret 中，不发送到浏览器。
-  // 模型由服务器的 OPENAI_MODEL 变量决定（默认为 GPT-5.6 Terra）。
+  // 模型由小手机设置控制，服务端再次验证模型 ID 和密钥。
   const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: openaiMessages, stream: useStream })
+    body: JSON.stringify({ messages: openaiMessages, stream: useStream, model: getSelectedOpenAIModel() })
   });
 
   if (!response.ok) {
@@ -354,7 +355,7 @@ export async function callClaudeVision(role, imageBase64, mimeType, contextMessa
     const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, stream: false })
+      body: JSON.stringify({ messages, stream: false, model: getSelectedOpenAIModel() })
     });
 
     if (!response.ok) {
