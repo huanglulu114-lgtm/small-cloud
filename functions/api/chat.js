@@ -155,10 +155,25 @@ export async function onRequestPost({ request, env }) {
     }
 
     // Model choice is restricted to verified IDs; never accept arbitrary expensive IDs.
-    const supportedModels = new Set(["gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-terra"]);
-    const model = typeof body.model === "string" && supportedModels.has(body.model)
-      ? body.model
-      : supportedModels.has(env.OPENAI_MODEL) ? env.OPENAI_MODEL : "gpt-6-luna";
+    const supportedModels = new Set([
+      "gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-luna", "gpt-5.6-terra"
+    ]);
+    // Reject unknown IDs instead of silently using a different model.
+    if (body.model !== undefined &&
+        (typeof body.model !== "string" || !supportedModels.has(body.model))) {
+      return reply({ error: { message: "选择的模型暂不支持，请检查模型设置" } }, 400);
+    }
+    const model = body.model || (
+      supportedModels.has(env.OPENAI_MODEL) ? env.OPENAI_MODEL : "gpt-6-luna"
+    );
+
+    // Send exactly the selected reasoning effort to OpenAI.
+    // Old clients that omit it keep the previous low default.
+    const supportedEfforts = new Set(["low", "medium", "high"]);
+    const effort = body.reasoning_effort === undefined ? "low" : body.reasoning_effort;
+    if (!supportedEfforts.has(effort)) {
+      return reply({ error: { message: "推理档位不正确，仅支持低、中、高" } }, 400);
+    }
 
     const response = await fetch(
       "https://api.openai.com/v1/chat/completions",
@@ -173,8 +188,9 @@ export async function onRequestPost({ request, env }) {
           messages,
           stream: body.stream === true,
           ...(body.stream === true ? { stream_options: { include_usage: true } } : {}),
-          reasoning_effort: "low",
-          max_completion_tokens: 4096
+          reasoning_effort: effort,
+          max_completion_tokens: effort === "high" ? 8192 :
+            effort === "medium" ? 6144 : 4096
         })
       }
     );
@@ -184,7 +200,9 @@ export async function onRequestPost({ request, env }) {
       headers: {
         "Content-Type":
           response.headers.get("Content-Type") || "application/json",
-        "Cache-Control": "no-store"
+        "Cache-Control": "no-store",
+        "X-SmallCloud-Requested-Model": model,
+        "X-SmallCloud-Reasoning-Effort": effort
       }
     });
   } catch {
