@@ -62,6 +62,17 @@
               </div>
             </div>
 
+            <div class="pill-card" @click="router.push('/api-usage')">
+              <div class="pill-left">
+                <div class="icon-circle"><db-icon /></div>
+                <span class="pill-label">API 用量与余额</span>
+              </div>
+              <div class="pill-right">
+                <span class="pill-value">查看</span>
+                <chevron-right />
+              </div>
+            </div>
+
             <div class="pill-card" @click="activePage = 'minimax'">
               <div class="pill-left">
                 <div class="icon-circle"><mic-icon /></div>
@@ -369,7 +380,7 @@ const wallpaperPreview = ref('');
 const customIcons = ref({});
 const dataMsg = ref('');
 const backupTableNames = () => db.tables.map(table => table.name);
-const BACKUP_LOCAL_STORAGE_KEYS = ['globalMinimax', 'useStreamAPI', 'useVercelProxy', SYSTEM_THEME_KEY, SMS_THEME_KEY, 'userStatus'];
+const BACKUP_LOCAL_STORAGE_KEYS = ['globalMinimax', 'useStreamAPI', 'useVercelProxy', SYSTEM_THEME_KEY, SMS_THEME_KEY, 'userStatus', 'xiaoshouji_api_usage_v1', 'xiaoshouji_api_balance_reference_v1'];
 
 const loadAll = async () => {
   apiProfiles.value = await apiProfileService.getAll();
