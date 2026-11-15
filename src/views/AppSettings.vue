@@ -144,10 +144,10 @@
             <div class="pill-right"><chevron-right /></div>
             </div>
 
-            <div class="pill-card" @click="activePage = 'data'">
+            <div class="pill-card" @click="openDataPage">
               <div class="pill-left">
                 <div class="icon-circle"><db-icon /></div>
-                <span class="pill-label">数据管理</span>
+                <span class="pill-label">数据与云端同步</span>
               </div>
               <div class="pill-right"><chevron-right /></div>
             </div>
@@ -318,7 +318,18 @@
           <div style="width:60px"></div>
         </div>
         <div class="scroll-area">
-          <div class="section-label mt-4">两部手机云端同步</div>
+          <div class="section-label mt-4">Notion 记忆连接</div>
+          <div class="card-group">
+            <div class="card-item">
+              <span class="item-label">{{ notionHealth.label }}</span>
+            </div>
+            <div class="card-item no-border" @click="checkNotionHealth">
+              <span class="item-label">重新检测 Notion</span>
+              <div class="item-right"><chevron-right /></div>
+            </div>
+          </div>
+          <p class="section-hint">直接检测小手机后台能否读取授权的 Notion 轻量记忆页；目前是只读入口，暂不自动写入。</p>
+          <div class="section-label mt-8">两部手机云端同步</div>
           <div class="card-group">
             <div class="card-item">
               <span class="item-label">{{ syncStatus.label }}</span>
@@ -422,14 +433,14 @@ const SettingsIcon = mkAppIcon(['M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.7
 
 // 仅仅保留这 8 个要替换图片的小应用
 const allApps = [
-  { id:'chat',     name:'微信',   iconComp: MsgIcon      },
-  { id:'forum',    name:'论坛',   iconComp: ForumIcon    },
-  { id:'search',   name:'查手机', iconComp: SearchIcon   },
-  { id:'date',     name:'约会',   iconComp: DateIcon     },
-  { id:'games',    name:'游戏',   iconComp: GameIcon     },
-  { id:'read',     name:'阅读',   iconComp: ReadIcon     },
-  { id:'gacha',    name:'账本',   iconComp: GachaIcon    },
-  { id:'settings', name:'设置',   iconComp: SettingsIcon }
+  { id:'chat',     name:'微信',     iconComp: MsgIcon      },
+  { id:'sticker',  name:'表情包',   iconComp: ForumIcon    },
+  { id:'char',     name:'角色记忆', iconComp: ReadIcon     },
+  { id:'moments',  name:'朋友圈',   iconComp: DateIcon     },
+  { id:'contacts', name:'联系人',   iconComp: GameIcon     },
+  { id:'world',    name:'世界书',   iconComp: ReadIcon     },
+  { id:'style',    name:'美化',     iconComp: GachaIcon    },
+  { id:'settings', name:'设置',     iconComp: SettingsIcon }
 ];
 
 // ---- 状态数据 ----
@@ -451,6 +462,26 @@ const useVercelProxy = ref(false);
 const wallpaperPreview = ref('');
 const customIcons = ref({});
 const dataMsg = ref('');
+const notionHealth = ref({ label: '尚未检测 Notion', connected: null });
+const checkNotionHealth = async () => {
+  notionHealth.value = { connected: null, label: '正在检测 Notion…' };
+  try {
+    const response = await fetch('/api/notion-status', { credentials: 'same-origin', cache: 'no-store' });
+    const result = await response.json();
+    notionHealth.value = {
+      connected: Boolean(result.connected),
+      label: result.connected
+        ? 'Notion 已连接｜轻量记忆可读取（只读）'
+        : 'Notion 未接通：' + (result.reason || '请检查密钥、页面权限')
+    };
+  } catch {
+    notionHealth.value = { connected: false, label: '无法检测 Notion，请确认小手机已登录' };
+  }
+};
+const openDataPage = () => {
+  activePage.value = 'data';
+  void checkNotionHealth();
+};
 const syncStatus = ref(getCloudSyncStatus());
 const onSyncStatus = event => { syncStatus.value = event.detail; };
 const syncNow = async () => { syncStatus.value = await checkCloudSync(); };
