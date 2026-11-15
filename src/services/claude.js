@@ -1,12 +1,30 @@
 // Claude API 调用服务
 import { mergeSystemPrompts } from '../config/systemPrompts';
 import { recordApiUsage } from './apiUsage';
-import { getSelectedOpenAIModel } from '../config/openaiModels';
+import {
+  getSelectedOpenAIModel,
+  getSelectedOpenAIReasoningEffort,
+  OPENAI_LAST_SUCCESS_KEY
+} from '../config/openaiModels';
 
 const CHAT_PROXY_ENDPOINT = '/api/chat';
 const USE_VERCEL_PROXY_KEY = 'useVercelProxy';
 
 const useVercelProxy = () => localStorage.getItem(USE_VERCEL_PROXY_KEY) === 'true';
+
+// Save the model returned by OpenAI and the effort accepted by the proxy.
+// Only record a successful API response, never merely a UI choice.
+function saveSuccessfulOpenAISelection(response, responseModel) {
+  const model = String(responseModel || response.headers.get('X-SmallCloud-Requested-Model') || '');
+  const effort = response.headers.get('X-SmallCloud-Reasoning-Effort');
+  if (!model || !['low', 'medium', 'high'].includes(effort)) return;
+  try {
+    const record = { model, effort, at: new Date().toISOString() };
+    localStorage.setItem(OPENAI_LAST_SUCCESS_KEY, JSON.stringify(record));
+    window.dispatchEvent(new CustomEvent('smallcloud:model-used', { detail: record }));
+  } catch { /* Storage is optional. */ }
+}
+
 
 /**
  * 带有自动重试机制的 fetch
@@ -157,6 +175,7 @@ async function handleOpenAIStream(response, onChunk) {
   if (pending.trim()) processLine(pending.trim());
 
   if (finalUsage) recordApiUsage(finalUsage, responseModel);
+  if (responseModel) saveSuccessfulOpenAISelection(response, responseModel);
   if (onChunk && buffer.trim()) onChunk(buffer);
   return fullText;
 }
@@ -260,7 +279,12 @@ async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onC
   const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: openaiMessages, stream: useStream, model: getSelectedOpenAIModel() })
+    body: JSON.stringify({
+      messages: openaiMessages,
+      stream: useStream,
+      model: getSelectedOpenAIModel(),
+      reasoning_effort: getSelectedOpenAIReasoningEffort()
+    })
   });
 
   if (!response.ok) {
@@ -275,6 +299,7 @@ async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onC
 
   const data = await response.json();
   recordApiUsage(data.usage, data.model);
+  saveSuccessfulOpenAISelection(response, data.model);
   return data.choices?.[0]?.message?.content || '';
 }
 
@@ -355,7 +380,11 @@ export async function callClaudeVision(role, imageBase64, mimeType, contextMessa
     const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, stream: false, model: getSelectedOpenAIModel() })
+      body: JSON.stringify({
+        messages, stream: false,
+        model: getSelectedOpenAIModel(),
+        reasoning_effort: getSelectedOpenAIReasoningEffort()
+      })
     });
 
     if (!response.ok) {
@@ -364,6 +393,7 @@ export async function callClaudeVision(role, imageBase64, mimeType, contextMessa
     }
     const data = await response.json();
     recordApiUsage(data.usage, data.model);
+    saveSuccessfulOpenAISelection(response, data.model);
     return data.choices?.[0]?.message?.content || '';
   }
 }
