@@ -14,10 +14,12 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { startProactiveMessages } from './services/proactiveMessages';
+import { startCloudSync } from './services/cloudSync';
 
 const router = useRouter();
 const proactiveNotice = ref(null);
 let stopProactive = null;
+let stopSync = null;
 let noticeTimer = null;
 const showProactiveMessage = event => {
   proactiveNotice.value = event.detail;
@@ -38,6 +40,7 @@ const updateVisualViewportHeight = () => {
 
 onMounted(() => {
   stopProactive = startProactiveMessages(() => router.currentRoute.value.path);
+  stopSync = startCloudSync();
   window.addEventListener('smallcloud:proactive-message', showProactiveMessage);
   updateVisualViewportHeight();
   window.visualViewport?.addEventListener('resize', updateVisualViewportHeight);
@@ -45,6 +48,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopProactive?.();
+  stopSync?.();
   if (noticeTimer) clearTimeout(noticeTimer);
   window.removeEventListener('smallcloud:proactive-message', showProactiveMessage);
   window.visualViewport?.removeEventListener('resize', updateVisualViewportHeight);
