@@ -1,5 +1,6 @@
 // Claude API 调用服务
 import { mergeSystemPrompts } from '../config/systemPrompts';
+import { recordApiUsage } from './apiUsage';
 
 const CHAT_PROXY_ENDPOINT = '/api/chat';
 const USE_VERCEL_PROXY_KEY = 'useVercelProxy';
@@ -112,49 +113,50 @@ async function handleOpenAIStream(response, onChunk) {
   const decoder = new TextDecoder();
   let fullText = '';
   let buffer = '';
+  let pending = '';
+  let finalUsage = null;
+  let responseModel = '';
+
+  function processLine(line) {
+    if (!line.startsWith('data:')) return;
+    const eventData = line.slice(5).trim();
+    if (!eventData || eventData === '[DONE]') return;
+    try {
+      const parsed = JSON.parse(eventData);
+      if (parsed.model) responseModel = parsed.model;
+      if (parsed.usage) finalUsage = parsed.usage;
+      const text = parsed.choices?.[0]?.delta?.content;
+      if (typeof text !== 'string' || !text) return;
+      buffer += text;
+      fullText += text;
+      if (onChunk && buffer.includes('\n')) {
+        const parts = buffer.split('\n');
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (parts[i].trim()) onChunk(parts[i]);
+        }
+        buffer = parts[parts.length - 1];
+      }
+    } catch {
+      // Some streaming events are not JSON.
+    }
+  }
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-
-    const chunk = decoder.decode(value, { stream: true });
-    const lines = chunk.split('\n').filter(line => line.trim());
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.choices?.[0]?.delta?.content) {
-            const text = parsed.choices[0].delta.content;
-            buffer += text;
-            fullText += text;
-
-            // 遇到换行就发送一个气泡
-            if (onChunk && buffer.includes('\n')) {
-              const parts = buffer.split('\n');
-              for (let i = 0; i < parts.length - 1; i++) {
-                if (parts[i].trim()) {
-                  onChunk(parts[i]);
-                }
-              }
-              buffer = parts[parts.length - 1];
-            }
-          }
-        } catch (e) {
-          // 忽略解析错误
-        }
-      }
+    pending += decoder.decode(value, { stream: true });
+    let lineEnd;
+    while ((lineEnd = pending.indexOf('\n')) !== -1) {
+      const line = pending.slice(0, lineEnd).trim();
+      pending = pending.slice(lineEnd + 1);
+      processLine(line);
     }
   }
+  pending += decoder.decode();
+  if (pending.trim()) processLine(pending.trim());
 
-  // 发送剩余内容
-  if (onChunk && buffer.trim()) {
-    onChunk(buffer);
-  }
-
+  if (finalUsage) recordApiUsage(finalUsage, responseModel);
+  if (onChunk && buffer.trim()) onChunk(buffer);
   return fullText;
 }
 
@@ -253,7 +255,7 @@ async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onC
 
   // 从同源 Cloudflare Pages Function 调用 OpenAI。
   // API Key 只存在 Cloudflare 的 OPENAI_API_KEY Secret 中，不发送到浏览器。
-  // 模型由服务器的 OPENAI_MODEL 变量决定（默认 gpt-4o-mini）。
+  // 模型由服务器的 OPENAI_MODEL 变量决定（默认为 GPT-5.6 Terra）。
   const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -271,6 +273,7 @@ async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onC
   }
 
   const data = await response.json();
+  recordApiUsage(data.usage, data.model);
   return data.choices?.[0]?.message?.content || '';
 }
 
@@ -359,6 +362,7 @@ export async function callClaudeVision(role, imageBase64, mimeType, contextMessa
       throw new Error(error.error?.message || `API 请求失败: ${response.status}`);
     }
     const data = await response.json();
+    recordApiUsage(data.usage, data.model);
     return data.choices?.[0]?.message?.content || '';
   }
 }
