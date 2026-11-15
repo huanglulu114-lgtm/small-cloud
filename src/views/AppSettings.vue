@@ -214,9 +214,13 @@
         <div class="scroll-area">
           <div class="card-group form-group mt-4">
             <div class="form-row"><label class="form-label">名称</label><input class="form-input" v-model="editingProfile.name" placeholder="如：GPT-4o" /></div>
-            <div class="form-row"><label class="form-label">API Key</label><input class="form-input" type="password" v-model="editingProfile.apiKey" placeholder="sk-..." /></div>
-            <div class="form-row"><label class="form-label">Base URL</label><input class="form-input" v-model="editingProfile.baseUrl" placeholder="留空用默认" /></div>
-            <div class="form-row"><label class="form-label">模型</label><input class="form-input" v-model="editingProfile.model" placeholder="gpt-4o" /></div>
+            <div v-if="editingProfile.apiFormat === 'anthropic'" class="form-row"><label class="form-label">API Key</label><input class="form-input" type="password" v-model="editingProfile.apiKey" placeholder="sk-..." /></div>
+            <div v-if="editingProfile.apiFormat === 'anthropic'" class="form-row"><label class="form-label">Base URL</label><input class="form-input" v-model="editingProfile.baseUrl" placeholder="留空用默认" /></div>
+            <div v-if="editingProfile.apiFormat === 'anthropic'" class="form-row"><label class="form-label">模型</label><input class="form-input" v-model="editingProfile.model" placeholder="Claude 模型 ID" /></div>
+            <div v-if="editingProfile.apiFormat !== 'anthropic'" class="form-row">
+              <label class="form-label">API 接入</label>
+              <span class="pill-value">由 Cloudflare 服务端管理密钥，默认 GPT-5.6 Terra</span>
+            </div>
             <div class="form-row no-border">
               <label class="form-label">API格式</label>
               <select class="form-select" v-model="editingProfile.apiFormat">
