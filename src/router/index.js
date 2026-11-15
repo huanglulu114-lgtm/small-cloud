@@ -97,6 +97,11 @@ const routes = [
     component: () => import('../views/AppSettings.vue')
   },
   {
+    path: '/api-usage',
+    name: 'ApiUsage',
+    component: () => import('../views/ApiUsage.vue')
+  },
+  {
     path: '/style-import',
     name: 'StyleImport',
     component: () => import('../views/StyleImport.vue')
