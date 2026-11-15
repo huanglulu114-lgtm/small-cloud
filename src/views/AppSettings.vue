@@ -107,6 +107,28 @@
             <label class="pill-card">
               <div class="pill-left">
                 <div class="icon-circle"><api-chat-icon /></div>
+                <span class="pill-label">主动来消息</span>
+              </div>
+              <div class="pill-right">
+                <input type="checkbox" v-model="proactiveEnabled" @change="saveProactive" class="wx-switch" />
+              </div>
+            </label>
+            <p class="section-hint">叶洵会在你一段时间没聊天时主动发消息，最多每天 2 次。只有打开小手机时才会检查，不会在关闭后后台推送。</p>
+
+            <label class="pill-card">
+              <div class="pill-left">
+                <div class="icon-circle"><api-chat-icon /></div>
+                <span class="pill-label">主动发虚拟红包/转账</span>
+              </div>
+              <div class="pill-right">
+                <input type="checkbox" v-model="proactiveWalletEnabled" @change="saveProactiveWallet" class="wx-switch" />
+              </div>
+            </label>
+            <p class="section-hint">偶尔由角色自行选择是否发起，每次最多虚拟 20 元，不是真钱，不会从你的银行或支付账户扣款。</p>
+
+            <label class="pill-card">
+              <div class="pill-left">
+                <div class="icon-circle"><api-chat-icon /></div>
                 <span class="pill-label">Vercel API 代理</span>
               </div>
               <div class="pill-right">
@@ -321,6 +343,7 @@ import { useRouter } from 'vue-router';
 import db, { apiProfileService, roleService, conversationService, messageService, assetService } from '../services/db';
 import { applySystemTheme, SYSTEM_THEME_KEY, SMS_THEME_KEY } from '../utils/themeSync';
 import { OPENAI_MODEL_OPTIONS, OPENAI_MODEL_STORAGE_KEY, getSelectedOpenAIModel } from '../config/openaiModels';
+import { PROACTIVE_ENABLED_KEY, PROACTIVE_WALLET_KEY } from '../services/proactiveMessages';
 
 const router = useRouter();
 const activePage = ref('main'); 
@@ -403,12 +426,16 @@ const useStreamAPI = ref(false);
 const AUTO_REPLY_KEY = 'smallCloudAutoReply';
 const autoReplyEnabled = ref(localStorage.getItem(AUTO_REPLY_KEY) !== 'false');
 const saveAutoReply = () => localStorage.setItem(AUTO_REPLY_KEY, autoReplyEnabled.value ? 'true' : 'false');
+const proactiveEnabled = ref(localStorage.getItem(PROACTIVE_ENABLED_KEY) !== 'false');
+const proactiveWalletEnabled = ref(localStorage.getItem(PROACTIVE_WALLET_KEY) !== 'false');
+const saveProactive = () => localStorage.setItem(PROACTIVE_ENABLED_KEY, proactiveEnabled.value ? 'true' : 'false');
+const saveProactiveWallet = () => localStorage.setItem(PROACTIVE_WALLET_KEY, proactiveWalletEnabled.value ? 'true' : 'false');
 const useVercelProxy = ref(false);
 const wallpaperPreview = ref('');
 const customIcons = ref({});
 const dataMsg = ref('');
 const backupTableNames = () => db.tables.map(table => table.name);
-const BACKUP_LOCAL_STORAGE_KEYS = ['globalMinimax', 'useStreamAPI', 'useVercelProxy', AUTO_REPLY_KEY, SYSTEM_THEME_KEY, SMS_THEME_KEY, 'userStatus', 'xiaoshouji_api_usage_v1', 'xiaoshouji_api_balance_reference_v1', OPENAI_MODEL_STORAGE_KEY];
+const BACKUP_LOCAL_STORAGE_KEYS = ['globalMinimax', 'useStreamAPI', 'useVercelProxy', AUTO_REPLY_KEY, PROACTIVE_ENABLED_KEY, PROACTIVE_WALLET_KEY, SYSTEM_THEME_KEY, SMS_THEME_KEY, 'userStatus', 'xiaoshouji_api_usage_v1', 'xiaoshouji_api_balance_reference_v1', OPENAI_MODEL_STORAGE_KEY];
 
 const loadAll = async () => {
   apiProfiles.value = await apiProfileService.getAll();
@@ -416,6 +443,8 @@ const loadAll = async () => {
   if (mm) globalMinimax.value = JSON.parse(mm);
   useStreamAPI.value = localStorage.getItem('useStreamAPI') === 'true';
   autoReplyEnabled.value = localStorage.getItem(AUTO_REPLY_KEY) !== 'false';
+  proactiveEnabled.value = localStorage.getItem(PROACTIVE_ENABLED_KEY) !== 'false';
+  proactiveWalletEnabled.value = localStorage.getItem(PROACTIVE_WALLET_KEY) !== 'false';
   useVercelProxy.value = localStorage.getItem('useVercelProxy') === 'true';
   
   const savedTheme = localStorage.getItem(SYSTEM_THEME_KEY) || 'theme-minimal';
