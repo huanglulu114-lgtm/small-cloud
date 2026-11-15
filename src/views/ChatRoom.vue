@@ -61,7 +61,9 @@
       v-else
       ref="chatInputRef"
       :wallet-balance-cents="walletBalanceCents"
+      :stickers="linkedStickers"
       @send="sendTextMessage"
+      @send-sticker="sendStickerMessage"
       @send-image="sendImageMessage"
       @send-wallet="sendWalletMessage"
       @generate="generateReply"
@@ -264,10 +266,9 @@ const loadConversation = async () => {
     }
   }
 
-  const settings = role.value?.chatSettings || {};
-  if (settings.linkedLibraryId) {
-    linkedStickers.value = await stickerService.getByLibrary(settings.linkedLibraryId);
-  }
+  // Available stickers work immediately, even if no library has been
+  // manually linked in character settings.
+  linkedStickers.value = await stickerService.getAll();
 
   await conversationService.markAsRead(conversationId);
 };
@@ -277,10 +278,7 @@ const refreshRoleSettings = async () => {
   const latestRole = await roleService.getById(role.value.id);
   if (!latestRole) return;
   role.value = { ...role.value, ...latestRole };
-  const settings = role.value?.chatSettings || {};
-  linkedStickers.value = settings.linkedLibraryId
-    ? await stickerService.getByLibrary(settings.linkedLibraryId)
-    : [];
+  linkedStickers.value = await stickerService.getAll();
 };
 
 const loadMessages = async () => {
@@ -326,7 +324,7 @@ const chatInputRef = ref(null);
 const chatPageRef = ref(null);
 
 const onPageClick = (e) => {
-  if (!e.target.closest('.wx-input-bar') && !e.target.closest('.action-panel')) {
+  if (!e.target.closest('.wx-input-bar') && !e.target.closest('.action-panel') && !e.target.closest('.sticker-picker')) {
     document.activeElement?.blur();
     if (chatInputRef.value) {
       chatInputRef.value.closeActionSheet();
@@ -464,6 +462,18 @@ const sendTextMessage = async (text) => {
     scheduleAutoReply();
   } catch (error) {
     alert('发送失败: ' + error.message);
+  }
+};
+
+const sendStickerMessage = async (sticker) => {
+  if (!sticker?.imageUrl) return;
+  try {
+    await messageService.create(conversationId, 'user', sticker.imageUrl, 'sticker',
+      null, { stickerName: sticker.name || '表情包' });
+    await loadMessages();
+    scheduleAutoReply();
+  } catch (error) {
+    alert('表情发送失败: ' + error.message);
   }
 };
 
