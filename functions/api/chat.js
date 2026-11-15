@@ -41,10 +41,11 @@ export async function onRequestPost({ request, env }) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: env.OPENAI_MODEL || "gpt-4o-mini",
+          model: env.OPENAI_MODEL || "gpt-5.6-terra",
           messages: body.messages,
           stream: body.stream === true,
-          max_completion_tokens: 2048
+          reasoning_effort: "low",
+          max_completion_tokens: 4096
         })
       }
     );
