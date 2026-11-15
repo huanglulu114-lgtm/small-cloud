@@ -103,7 +103,22 @@ export async function buildContextPacket(role, options = {}) {
   const maxTurns = Math.max(1, Number(options.maxTurns ?? settings.contextLength) || 15);
   const allMessages = options.contextMessages || await messageService.getContextMessagesByRole(role.id);
   const query = allMessages.slice(-8).map(message => message.content).join('\n');
-  const memories = options.memoryEntries || await memoryService.retrieveForRole(role.id, query, 5);
+  let memories = options.memoryEntries || await memoryService.retrieveForRole(role.id, query, 5);
+
+  // Keep a small "relationship spine" in context even when the current wording does not
+  // keyword-match older shared experiences. This gives long-running relationships continuity
+  // without flooding every request with the entire memory store.
+  if (!options.memoryEntries) {
+    const active = await memoryService.listByRole(role.id, { status: 'active' });
+    const anchors = active
+      .filter(memory => ['relationship_event', 'commitment', 'unresolved_topic'].includes(memory.type))
+      .sort((a, b) =>
+        (b.importance || 3) - (a.importance || 3) ||
+        (b.updatedAt || 0) - (a.updatedAt || 0))
+      .slice(0, 2);
+    const merged = [...anchors, ...memories];
+    memories = [...new Map(merged.map(memory => [memory.id, memory])).values()].slice(0, 6);
+  }
   const worldBookResult = options.worldBookResult || buildWorldBookContext(
     await worldBookEntryService.getAll(),
     allMessages.slice(-8),
@@ -111,7 +126,7 @@ export async function buildContextPacket(role, options = {}) {
   );
 
   let includeDiaries = options.includeDiaries !== false;
-  let selectedMemories = memories.slice(0, 5);
+  let selectedMemories = memories.slice(0, 6);
   let selectedWorldBook = worldBookResult;
   let longTermMemoryMaxChars = 8000;
   let coreMemoryMaxChars = 4000;
