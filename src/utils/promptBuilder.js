@@ -134,9 +134,14 @@ export async function buildEnhancedSystemPrompt(role, contextMessages = [], opti
     if (userStatus) parts.push(section('用户状态', userStatus));
   }
 
-  if (settings.linkedLibraryId && (!options.directiveTypes || options.directiveTypes.includes('sticker'))) {
-    const linkedStickers = await stickerService.getByLibrary(settings.linkedLibraryId);
-    parts.push(buildStickerLibraryPrompt(linkedStickers));
+  if (!options.directiveTypes || options.directiveTypes.includes('sticker')) {
+    const availableStickers = await stickerService.getAll();
+    // All saved stickers may be chosen even if no character-library link was set.
+    // Keep only names and short usage descriptions in the prompt (never image bytes).
+    const selected = settings.linkedLibraryId
+      ? availableStickers.filter(sticker => String(sticker.libraryId) === String(settings.linkedLibraryId))
+      : availableStickers;
+    parts.push(buildStickerLibraryPrompt((selected.length ? selected : availableStickers).slice(0, 80)));
   }
 
   return parts.filter(Boolean).join('\n\n');
