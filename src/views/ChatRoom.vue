@@ -133,6 +133,28 @@ const formatMessageTime = (timestamp) => {
 };
 const hasMore = computed(() => displayOffset.value > 0);
 const isTyping = ref(false);
+// Group quickly sent messages into one reply, avoiding unnecessary API charges.
+// The user can turn this off in Settings without losing manual generate.
+const AUTO_REPLY_KEY = 'smallCloudAutoReply';
+const AUTO_REPLY_DELAY_MS = 1200;
+let autoReplyTimer = null;
+let pendingAutoReply = false;
+let chatRoomDestroyed = false;
+
+const scheduleAutoReply = () => {
+  if (chatRoomDestroyed || localStorage.getItem(AUTO_REPLY_KEY) === 'false') return;
+  pendingAutoReply = true;
+  if (autoReplyTimer !== null) clearTimeout(autoReplyTimer);
+  autoReplyTimer = setTimeout(() => {
+    autoReplyTimer = null;
+    if (chatRoomDestroyed || localStorage.getItem(AUTO_REPLY_KEY) === 'false') {
+      pendingAutoReply = false;
+      return;
+    }
+    // If an earlier reply is still running, run this one once it finishes.
+    if (!isTyping.value) void generateReply('auto_send');
+  }, AUTO_REPLY_DELAY_MS);
+};
 const isLoading = ref(true);
 const messagesContainer = ref(null);
 const linkedStickers = ref([]);
@@ -190,6 +212,7 @@ const vpResizeHandler = () => {
 };
 
 onMounted(async () => {
+  chatRoomDestroyed = false;
   loadUserAvatar();
   await loadConversation();
   await loadWalletBalance();
@@ -203,6 +226,10 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  chatRoomDestroyed = true;
+  pendingAutoReply = false;
+  if (autoReplyTimer !== null) clearTimeout(autoReplyTimer);
+  autoReplyTimer = null;
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', vpResizeHandler);
     window.visualViewport.removeEventListener('scroll', vpResizeHandler);
@@ -434,6 +461,7 @@ const sendTextMessage = async (text) => {
     await messageService.create(conversationId, 'user', text, 'text', null, extra);
     replyingTo.value = null;
     await loadMessages();
+    scheduleAutoReply();
   } catch (error) {
     alert('发送失败: ' + error.message);
   }
@@ -477,15 +505,20 @@ const refundTransferMessage = async (messageId) => {
   }
 };
 
-const generateReply = async () => {
+const generateReply = async (trigger = 'manual_generate') => {
+  // Prevent tapping the arrow while auto-reply is running from double billing.
+  if (isTyping.value || chatRoomDestroyed) return;
+  if (autoReplyTimer !== null) clearTimeout(autoReplyTimer);
+  autoReplyTimer = null;
+  pendingAutoReply = false;
+  isTyping.value = true;
   try {
-    isTyping.value = true;
     await refreshRoleSettings();
     await chatOrchestrator.reply({
       roleId: role.value.id,
       conversationId,
       channel: 'wechat',
-      trigger: 'manual_generate',
+      trigger,
       callbacks: { onMessageCreated: loadMessages }
     });
     await loadWalletBalance();
@@ -493,6 +526,8 @@ const generateReply = async () => {
     alert('生成失败: ' + error.message);
   } finally {
     isTyping.value = false;
+    // A message received while the previous response was pending needs its own turn.
+    if (pendingAutoReply && !chatRoomDestroyed) scheduleAutoReply();
   }
 };
 
