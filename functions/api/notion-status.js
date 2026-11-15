@@ -13,7 +13,18 @@ export async function onRequestGet({ request, env }) {
 
   const ids = notionMemoryPageIds(env);
   if (!notionToken(env)) {
-    return reply({ connected: false, reason: "正式部署未收到 Notion 密钥。请检查 Pages 项目 small-cloud 的生产环境变量和密钥（NOTION_TOKEN），保存后要重新部署。记忆页 ID 已自动配置。" });
+    // Safe diagnostics: names and existence only. Never return token values.
+    // This distinguishes a missing Pages binding from a misspelled or empty one.
+    const relevantNames = Object.keys(env || {})
+      .filter(name => /notion/i.test(name)).slice(0, 8);
+    const expectedPresent = Object.prototype.hasOwnProperty.call(env, "NOTION_TOKEN");
+    const reason = expectedPresent
+      ? "运行时找到了 NOTION_TOKEN 变量名，但它的值为空或不可读取；需要核对密钥内容。"
+      : relevantNames.length
+        ? "生产函数收到的 Notion 相关变量名：" + relevantNames.join("、") +
+          "；但没有收到可用的 NOTION_TOKEN。注意名称大小写和多余空格。"
+        : "生产函数没有收到任何 Notion 相关变量。后台列表里的密钥尚未进入当前 Pages Functions 运行环境。";
+    return reply({ connected: false, reason, bindingNames: relevantNames, expectedPresent });
   }
   if (!ids.length) {
     return reply({ connected: false, reason: "Notion 记忆页 ID 格式不正确" });
