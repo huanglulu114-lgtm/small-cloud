@@ -43,6 +43,11 @@
       </div>
     </div>
 
+    <div v-if="replyError" class="wx-reply-error" role="alert">
+      <span>回复失败：{{ replyError }}</span>
+      <button type="button" aria-label="关闭错误提示" @click="replyError = ''">×</button>
+    </div>
+
     <div v-if="replyingTo && !selectionMode" class="wx-reply-draft">
       <div>
         <span>引用</span>
@@ -135,6 +140,7 @@ const formatMessageTime = (timestamp) => {
 };
 const hasMore = computed(() => displayOffset.value > 0);
 const isTyping = ref(false);
+const replyError = ref('');
 // Group quickly sent messages into one reply, avoiding unnecessary API charges.
 // The user can turn this off in Settings without losing manual generate.
 const AUTO_REPLY_KEY = 'smallCloudAutoReply';
@@ -521,6 +527,7 @@ const generateReply = async (trigger = 'manual_generate') => {
   if (autoReplyTimer !== null) clearTimeout(autoReplyTimer);
   autoReplyTimer = null;
   pendingAutoReply = false;
+  replyError.value = '';
   isTyping.value = true;
   try {
     await refreshRoleSettings();
@@ -533,7 +540,9 @@ const generateReply = async (trigger = 'manual_generate') => {
     });
     await loadWalletBalance();
   } catch (error) {
-    alert('生成失败: ' + error.message);
+    // A persistent, visible error is easier to diagnose than a transient
+    // Safari alert. Do not alter or delete any saved message.
+    replyError.value = error?.message || '网络或模型接口发生错误，请检查连接后重试';
   } finally {
     isTyping.value = false;
     // A message received while the previous response was pending needs its own turn.
@@ -608,6 +617,28 @@ const compressImage = (file, maxSize = 384, quality = 0.8) => {
 </script>
 
 <style scoped>
+.wx-reply-error {
+  margin: 0 12px 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff0ed;
+  color: #8d3024;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.wx-reply-error span { flex: 1; overflow-wrap: anywhere; }
+.wx-reply-error button {
+  background: transparent;
+  border: 0;
+  padding: 4px;
+  font-size: 20px;
+  color: inherit;
+}
+
 .wx-chat-page {
   --chat-navbar-height: 44px;
 
