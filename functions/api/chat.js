@@ -1,4 +1,5 @@
 import { notionMemoryPageIds, notionToken } from "../_shared/notionMemory.js";
+import { getAccessJwt } from "../_shared/access.js";
 
 // Optional read-only Notion memories. Credentials belong in Cloudflare Secrets.
 function decodePart(part) {
@@ -13,7 +14,7 @@ function decodePart(part) {
 async function verifiedAccess(request, env) {
   const productionHost = "small-cloud-2zs.pages.dev";
   if (new URL(request.url).hostname.toLowerCase() !== productionHost) return false;
-  const parts = String(request.headers.get("Cf-Access-Jwt-Assertion") || "").split(".");
+  const parts = getAccessJwt(request).token.split(".");
   if (parts.length !== 3) return false;
   try {
     const header = JSON.parse(new TextDecoder().decode(decodePart(parts[0])));
