@@ -41,10 +41,13 @@ export function selectDetailPages(userText) {
   for (const page of DETAIL_PAGE_CATALOG) {
     const found = input.match(page.triggers);
     if (!found) continue;
-    // Longer, more specific matches outrank generic ones like "老公".
+    // Affectionate greetings alone are not requests to fetch relationship data.
+    if (page.key === "03" && ["老公", "老婆"].includes(found[0])) {
+      const hasSpecificRelation = /关系|结婚|伴侣|结扎|朋友|生日|孩子|吃醋|杨波|董姐|senior|lead|人设|身高/.test(input);
+      if (!hasSpecificRelation) continue;
+    }
     const matchLength = found[0].length;
-    const priority = (page.key === "03" && ["老公", "老婆"].includes(found[0])) ? 0 : 1;
-    matches.push({ page, score: priority * 100 + matchLength });
+    matches.push({ page, score: 100 + matchLength });
   }
   matches.sort((a, b) => b.score - a.score);
   return matches.slice(0, MAX_EXTRA_PAGES).map(match => match.page);
