@@ -15,6 +15,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { startProactiveMessages } from './services/proactiveMessages';
 import { startCloudSync } from './services/cloudSync';
+import { syncNotionMemory } from './services/notionMemoryCache';
 
 const router = useRouter();
 const proactiveNotice = ref(null);
@@ -33,6 +34,9 @@ const openProactiveChat = () => {
   }
 };
 
+const refreshNotionWhenVisible = () => {
+  if (document.visibilityState === 'visible') void syncNotionMemory();
+};
 const updateVisualViewportHeight = () => {
   const height = window.visualViewport?.height ?? window.innerHeight;
   document.documentElement.style.setProperty('--vvh', `${height}px`);
@@ -41,6 +45,9 @@ const updateVisualViewportHeight = () => {
 onMounted(() => {
   stopProactive = startProactiveMessages(() => router.currentRoute.value.path);
   stopSync = startCloudSync();
+  // Import once on this device, then check Notion edit times at most daily.
+  void syncNotionMemory();
+  document.addEventListener('visibilitychange', refreshNotionWhenVisible);
   window.addEventListener('smallcloud:proactive-message', showProactiveMessage);
   updateVisualViewportHeight();
   window.visualViewport?.addEventListener('resize', updateVisualViewportHeight);
@@ -49,6 +56,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopProactive?.();
   stopSync?.();
+  document.removeEventListener('visibilitychange', refreshNotionWhenVisible);
   if (noticeTimer) clearTimeout(noticeTimer);
   window.removeEventListener('smallcloud:proactive-message', showProactiveMessage);
   window.visualViewport?.removeEventListener('resize', updateVisualViewportHeight);
