@@ -5,10 +5,27 @@ function base64url(part) {
   return Uint8Array.from(atob(raw.padEnd(Math.ceil(raw.length / 4) * 4, "=")), c => c.charCodeAt(0));
 }
 
+// A Pages Function may receive the signed Access JWT either as the
+// Cloudflare-injected header or the browser's CF_Authorization cookie.
+// Both forms MUST pass the same signature, expiry and audience checks.
+export function getAccessJwt(request) {
+  const header = String(request.headers.get("Cf-Access-Jwt-Assertion") || "").trim();
+  if (header) return { token: header, source: "header" };
+  const cookies = String(request.headers.get("Cookie") || "").split(";");
+  const accessCookie = cookies.find(part => part.trim().startsWith("CF_Authorization="));
+  if (accessCookie) {
+    const raw = accessCookie.trim().slice("CF_Authorization=".length);
+    let value = raw;
+    try { value = decodeURIComponent(raw); } catch { /* Invalid cookie fails verification. */ }
+    return { token: value, source: "cookie" };
+  }
+  return { token: "", source: "none" };
+}
+
 export async function accessIdentity(request, env) {
   // Never expose private backups through preview or alternate domains.
   if (new URL(request.url).hostname.toLowerCase() !== "small-cloud-2zs.pages.dev") return null;
-  const token = String(request.headers.get("Cf-Access-Jwt-Assertion") || "");
+  const { token } = getAccessJwt(request);
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   try {
