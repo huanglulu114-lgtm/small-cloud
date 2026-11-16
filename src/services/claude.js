@@ -3,6 +3,7 @@ import { mergeSystemPrompts } from '../config/systemPrompts';
 import { recordApiUsage } from './apiUsage';
 import { fitOpenAIChatPayload, compressVisionDataUrl } from '../utils/chatPayload';
 import { readStreamChunkWithTimeout, readJsonWithTimeout, ReplyTimeoutError } from '../utils/replyTimeout';
+import { describeChatNetworkError } from '../utils/networkError';
 import {
   getSelectedOpenAIModel,
   getSelectedOpenAIReasoningEffort,
@@ -211,13 +212,18 @@ export async function callClaude(role, messages, onChunk = null) {
   console.log('📤 发送给API的系统提示词（前200字符）:', finalSystemPrompt.substring(0, 200));
   console.log('📤 消息数量:', messages.length);
 
-  // 根据 API 格式构建请求
-  if (apiFormat === 'anthropic') {
-    return await callAnthropicAPI(baseUrl, apiKey, model, finalSystemPrompt, messages, onChunk);
-  } else if (!apiFormat || apiFormat === 'openai') {
-    return await callOpenAIAPI(baseUrl, apiKey, model, finalSystemPrompt, messages, onChunk);
-  } else {
-    throw new Error('不支持的 API 格式');
+  // Show a meaningful message for Safari's "Load failed" instead of an
+  // opaque API error. The original local messages remain untouched.
+  try {
+    if (apiFormat === 'anthropic') {
+      return await callAnthropicAPI(baseUrl, apiKey, model, finalSystemPrompt, messages, onChunk);
+    } else if (!apiFormat || apiFormat === 'openai') {
+      return await callOpenAIAPI(baseUrl, apiKey, model, finalSystemPrompt, messages, onChunk);
+    } else {
+      throw new Error('不支持的 API 格式');
+    }
+  } catch (error) {
+    throw describeChatNetworkError(error);
   }
 }
 
