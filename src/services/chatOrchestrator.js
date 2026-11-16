@@ -3,6 +3,7 @@ import { callClaude } from './claude';
 import { textToSpeech } from './minimax';
 import { buildContextPacket } from './contextBuilder';
 import { parseMessageDirectives } from '../utils/directiveParser';
+import { explainInvisibleReply } from '../utils/replyVisibility';
 import { buildHeartVoiceSystemPrompt } from '../utils/promptBuilder';
 import { buildHeartVoiceMessages, parseHeartVoiceResponse } from '../utils/heartVoice';
 import { scheduleMemoryMaintenance } from './memoryWorker';
@@ -124,6 +125,7 @@ async function applyDirectives({ conversationId, role, rawText, channel, trigger
         includeInContext: true, source: 'directive'
       });
       const notice = await messageService.create(conversationId, 'system', `${role.name || '角色'}写了一篇日记 >`, 'diary_notice', null, { diaryId: entry.id });
+      created.push(notice);
       await emitCreated(callbacks, notice);
     } catch (error) {
       console.warn('角色日记写入失败:', error.message);
@@ -160,6 +162,11 @@ export const chatOrchestrator = {
     );
     const rawText = useStream ? streamed || response : response;
     const createdMessages = await applyDirectives({ conversationId, role, rawText, channel, trigger, callbacks });
+    if (!createdMessages.length) {
+      // Returning successfully with zero bubbles left the chat stuck in a
+      // silent "typing then nothing" state, despite a paid model response.
+      throw new Error(explainInvisibleReply(rawText, parseMessageDirectives(rawText)));
+    }
     scheduleMemoryMaintenance(role.id);
     return { role, packet, rawText, createdMessages, trigger };
   },
