@@ -1,16 +1,21 @@
 import { notionMemoryPageIds, notionToken } from "./notionMemory.js";
-import { selectDetailPages, shouldLookUpRecentDiary } from "./notionPages.js";
+import { DETAIL_PAGE_CATALOG, selectDetailPages, shouldLookUpRecentDiary } from "./notionPages.js";
 
 // Notion API calls cost no LLM tokens. What matters is the amount of
 // retrieved text sent to the model on each chat request.
 const CORE_LIMIT = 850;
 const TOPIC_LIMIT = 420;
 const DETAIL_LIMIT = 1150;
+const DEEP_DETAIL_LIMIT = 2800;
 const TOTAL_LIMIT = 3450;
+const DEEP_TOTAL_LIMIT = 8000;
 const CACHE_TTL_MS = 30 * 60 * 1000; // per Worker isolate only
 const MAX_RAW_CHARS = 24000;
-const MAX_BLOCK_CALLS = 3;
+const DEEP_MAX_RAW_CHARS = 60000;
+const MAX_BLOCK_CALLS = 4;
+const DEEP_MAX_BLOCK_CALLS = 12;
 const MAX_EXTRA_PAGES = 2;
+const DEEP_MAX_EXTRA_PAGES = 3;
 
 const pageCache = new Map();
 const pageInFlight = new Map();
@@ -26,50 +31,68 @@ function notionHeaders(env) {
 }
 
 function extractBlockText(block) {
-  return normalizeText((block[block.type]?.rich_text || []).map(piece =>
+  const value = block?.[block.type] || {};
+  if (block?.type === "child_page" || block?.type === "child_database")
+    return normalizeText(value.title || "");
+  return normalizeText((value.rich_text || []).map(piece =>
     piece.plain_text || piece.text?.content || "").join(""));
 }
 
-async function loadPage(env, id) {
+async function loadPage(env, id, { deep = false } = {}) {
   if (!id || !notionToken(env)) return [];
-  const key = id;
+  const key = id + ":" + (deep ? "deep" : "normal");
   const current = pageCache.get(key);
   if (current && Date.now() - current.at < CACHE_TTL_MS) return current.lines;
-  // Repeated 403/404s shouldn't slow every message when permissions are absent.
-  const deniedAt = permissionFailures.get(key);
+
+  const deniedAt = permissionFailures.get(id);
   if (deniedAt && Date.now() - deniedAt < 10 * 60 * 1000) {
     throw Error("Notion page not yet authorized");
   }
   if (pageInFlight.has(key)) return pageInFlight.get(key);
 
   const task = (async () => {
-    let cursor = null;
-    let remaining = MAX_RAW_CHARS;
-    let calls = 0;
+    const limits = {
+      remaining: deep ? DEEP_MAX_RAW_CHARS : MAX_RAW_CHARS,
+      callsLeft: deep ? DEEP_MAX_BLOCK_CALLS : MAX_BLOCK_CALLS,
+      maxDepth: deep ? 4 : 2
+    };
     const lines = [];
-    do {
-      calls++;
-      const url = "https://api.notion.com/v1/blocks/" + encodeURIComponent(id) +
-        "/children?page_size=100" +
-        (cursor ? "&start_cursor=" + encodeURIComponent(cursor) : "");
-      const response = await fetch(url, { headers: notionHeaders(env) });
-      if (!response.ok) {
-        if ([403, 404].includes(response.status)) permissionFailures.set(key, Date.now());
-        throw Error("Notion page not accessible: " + response.status);
-      }
-      const data = await response.json();
-      for (const block of data.results || []) {
-        const text = extractBlockText(block);
-        if (!text) continue;
-        const prefix = /^heading_[123]$/.test(block.type) ? "## " :
-          ["bulleted_list_item", "numbered_list_item"].includes(block.type) ? "- " : "";
-        const chunk = (prefix + text).slice(0, remaining);
-        lines.push(chunk);
-        remaining -= chunk.length;
-        if (remaining <= 0) break;
-      }
-      cursor = data.has_more ? data.next_cursor : null;
-    } while (cursor && calls < MAX_BLOCK_CALLS && remaining > 0);
+
+    const walk = async (blockId, depth = 0) => {
+      if (limits.remaining <= 0 || limits.callsLeft <= 0 || depth > limits.maxDepth) return;
+      let cursor = null;
+      do {
+        if (limits.remaining <= 0 || limits.callsLeft <= 0) break;
+        limits.callsLeft -= 1;
+        const url = "https://api.notion.com/v1/blocks/" + encodeURIComponent(blockId) +
+          "/children?page_size=100" +
+          (cursor ? "&start_cursor=" + encodeURIComponent(cursor) : "");
+        const response = await fetch(url, { headers: notionHeaders(env) });
+        if (!response.ok) {
+          if ([403, 404].includes(response.status)) permissionFailures.set(id, Date.now());
+          throw Error("Notion page not accessible: " + response.status);
+        }
+        const data = await response.json();
+
+        for (const block of data.results || []) {
+          const text = extractBlockText(block);
+          if (text) {
+            const prefix = /^heading_[123]$/.test(block.type) ? "## " :
+              ["bulleted_list_item", "numbered_list_item", "to_do", "toggle"].includes(block.type) ? "- " : "";
+            const chunk = (prefix + text).slice(0, limits.remaining);
+            lines.push(chunk);
+            limits.remaining -= chunk.length;
+          }
+          if (block.has_children && limits.remaining > 0 && limits.callsLeft > 0 && depth < limits.maxDepth) {
+            await walk(block.id, depth + 1);
+          }
+          if (limits.remaining <= 0 || limits.callsLeft <= 0) break;
+        }
+        cursor = data.has_more ? data.next_cursor : null;
+      } while (cursor && limits.remaining > 0 && limits.callsLeft > 0);
+    };
+
+    await walk(id, 0);
     pageCache.set(key, { lines, at: Date.now() });
     return lines;
   })();
@@ -77,7 +100,6 @@ async function loadPage(env, id) {
   pageInFlight.set(key, task);
   try { return await task; }
   catch (error) {
-    // A short-lived cached version can be used during transient Notion outages.
     if (current && Date.now() - current.at < 3 * 60 * 60 * 1000) return current.lines;
     throw error;
   } finally {
@@ -143,7 +165,12 @@ export function selectTieredMemory(sections, messages) {
   ].filter(Boolean).join("\n\n");
 }
 
-function relevantExcerpt(lines, query, maxChars) {
+function isDeepRecallQuery(query) {
+  return /notion|记不记得|还记得|以前|之前|上次|上回|当时|我说过|我们聊过|翻.*记忆|查.*记忆|读.*记忆|详细|具体|原话|完整/i
+    .test(String(query || ""));
+}
+
+function relevantExcerpt(lines, query, maxChars, { deep = false } = {}) {
   const clean = lines.filter(Boolean);
   if (!clean.length) return "";
   const words = (query.match(/[一-龥]{2,6}|[a-zA-Z0-9_]{2,}/g) || [])
@@ -163,9 +190,23 @@ function relevantExcerpt(lines, query, maxChars) {
     return { line, index, score };
   }).sort((a, b) => b.score - a.score || a.index - b.index);
 
-  const best = sorted.filter(entry => entry.score > 0).slice(0, 12);
-  // If matching is weak, include leading relevant context from the source.
-  const chosen = best.length ? best : sorted.slice(0, 8);
+  const best = sorted.filter(entry => entry.score > 0).slice(0, deep ? 8 : 12);
+  let chosen;
+  if (deep && best.length) {
+    const indices = new Set();
+    for (const entry of best.slice(0, 4)) {
+      for (let offset = -3; offset <= 3; offset += 1) {
+        const index = entry.index + offset;
+        if (index >= 0 && index < clean.length) indices.add(index);
+      }
+    }
+    chosen = [...indices].sort((a, b) => a - b).map(index => ({
+      line: clean[index], index, score: 0
+    }));
+  } else {
+    chosen = best.length ? best : sorted.slice(0, deep ? 16 : 8);
+  }
+
   const ordered = chosen.sort((a, b) => a.index - b.index);
   let result = "";
   for (const entry of ordered) {
@@ -228,17 +269,21 @@ export async function getTieredNotionMemory(env, messages) {
   if (!notionToken(env)) return "";
   const ids = notionMemoryPageIds(env);
   const query = latestUserText(messages);
+  const deepRecall = isDeepRecallQuery(query);
   const chunks = [];
 
   if (ids.length) {
     try {
-      const lightLines = await loadPage(env, ids[0]);
+      const lightLines = await loadPage(env, ids[0], { deep: deepRecall });
       const core = selectTieredMemory(parseLightSections(lightLines), messages);
       if (core) chunks.push(core);
     } catch { /* A missing light page does not prevent a permitted detail lookup. */ }
   }
 
-  let details = selectDetailPages(query).slice(0, MAX_EXTRA_PAGES);
+  let details = selectDetailPages(query).slice(0, deepRecall ? DEEP_MAX_EXTRA_PAGES : MAX_EXTRA_PAGES);
+  if (deepRecall && details.length === 0 && /notion|记忆|以前|之前|我说过|我们聊过/i.test(query)) {
+    details = DETAIL_PAGE_CATALOG.slice(0, DEEP_MAX_EXTRA_PAGES);
+  }
   if (shouldLookUpRecentDiary(query)) {
     const diary = await findRecentDiary(env);
     if (diary) {
@@ -249,8 +294,13 @@ export async function getTieredNotionMemory(env, messages) {
 
   const results = await Promise.all(details.map(async item => {
     try {
-      const lines = await loadPage(env, item.id);
-      const excerpt = relevantExcerpt(lines, query, DETAIL_LIMIT);
+      const lines = await loadPage(env, item.id, { deep: deepRecall });
+      const excerpt = relevantExcerpt(
+        lines,
+        query,
+        deepRecall ? DEEP_DETAIL_LIMIT : DETAIL_LIMIT,
+        { deep: deepRecall }
+      );
       if (!excerpt) return null;
       const warning = item.key === "09" || item.key === "日记"
         ? "\n此页含历史日期；不得将旧状态当作今天的事实。"
@@ -261,5 +311,5 @@ export async function getTieredNotionMemory(env, messages) {
     }
   }));
   chunks.push(...results.filter(Boolean));
-  return chunks.join("\n\n").slice(0, TOTAL_LIMIT);
+  return chunks.join("\n\n").slice(0, deepRecall ? DEEP_TOTAL_LIMIT : TOTAL_LIMIT);
 }
