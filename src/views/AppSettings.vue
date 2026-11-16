@@ -339,7 +339,10 @@
               <div class="item-right"><chevron-right /></div>
             </div>
           </div>
-          <p class="section-hint">直接检测小手机后台能否读取授权的 Notion 轻量记忆页；目前是只读入口，暂不自动写入。</p>
+          <p class="section-hint">先读轻量核心；需要时从 01、02、03、07、08、09 中最多补充两页，限制发送给模型的文字长度。Notion 暂不自动写入。</p>
+          <p v-if="notionHealth.missing?.length" class="section-hint">
+            未授权的详细页：{{ notionHealth.missing.join('、') }}。请在 Notion 给「小手机」集成共享这些页面，或者共享包含它们的总控父页；原来的轻量记忆仍可使用。
+          </p>
           <div class="section-label mt-8">两部手机云端同步</div>
           <div class="card-group">
             <div class="card-item">
@@ -500,8 +503,11 @@ const checkNotionHealth = async () => {
     const result = await response.json();
     notionHealth.value = {
       connected: Boolean(result.connected),
+      missing: result.details?.missing || [],
       label: result.connected
-        ? 'Notion 已连接｜轻量记忆可读取（只读）'
+        ? result.details
+          ? 'Notion 已连接｜详细页可读取 ' + result.details.readable + '/' + result.details.total + '（只读）'
+          : 'Notion 已连接｜轻量记忆可读取（只读）'
         : 'Notion 未接通：' + (result.reason || '请检查密钥、页面权限')
     };
   } catch {
