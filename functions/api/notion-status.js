@@ -1,4 +1,4 @@
-import { accessIdentity } from "../_shared/access.js";
+import { accessIdentity, getAccessJwt } from "../_shared/access.js";
 import { notionMemoryPageIds, notionToken } from "../_shared/notionMemory.js";
 
 // Only connection health is returned; no page contents or secret keys are exposed.
@@ -9,7 +9,16 @@ export async function onRequestGet({ request, env }) {
   });
 
   const identity = await accessIdentity(request, env);
-  if (!identity) return reply({ connected: false, reason: "请先通过 Cloudflare Access 登录小手机" }, 403);
+  if (!identity) {
+    const { source } = getAccessJwt(request);
+    return reply({
+      connected: false,
+      reason: source === "none"
+        ? "检测接口没有收到 Cloudflare Access 登录凭证。请重新打开小手机，完成邮箱验证码登录后再检测。"
+        : "已收到 Cloudflare Access 登录凭证，但签名、有效期或应用权限校验未通过。可能是登录过期或 Access 应用配置不匹配。",
+      accessDiagnostic: source === "none" ? "missing_credentials" : "verification_failed"
+    }, 403);
+  }
 
   const ids = notionMemoryPageIds(env);
   if (!notionToken(env)) {
