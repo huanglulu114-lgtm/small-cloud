@@ -14,6 +14,7 @@ const MAX_EXTRA_PAGES = 2;
 
 const pageCache = new Map();
 const pageInFlight = new Map();
+const permissionFailures = new Map();
 let diaryCache = null;
 
 function normalizeText(value) {
@@ -34,6 +35,11 @@ async function loadPage(env, id) {
   const key = id;
   const current = pageCache.get(key);
   if (current && Date.now() - current.at < CACHE_TTL_MS) return current.lines;
+  // Repeated 403/404s shouldn't slow every message when permissions are absent.
+  const deniedAt = permissionFailures.get(key);
+  if (deniedAt && Date.now() - deniedAt < 10 * 60 * 1000) {
+    throw Error("Notion page not yet authorized");
+  }
   if (pageInFlight.has(key)) return pageInFlight.get(key);
 
   const task = (async () => {
@@ -47,7 +53,10 @@ async function loadPage(env, id) {
         "/children?page_size=100" +
         (cursor ? "&start_cursor=" + encodeURIComponent(cursor) : "");
       const response = await fetch(url, { headers: notionHeaders(env) });
-      if (!response.ok) throw Error("Notion page not accessible: " + response.status);
+      if (!response.ok) {
+        if ([403, 404].includes(response.status)) permissionFailures.set(key, Date.now());
+        throw Error("Notion page not accessible: " + response.status);
+      }
       const data = await response.json();
       for (const block of data.results || []) {
         const text = extractBlockText(block);
