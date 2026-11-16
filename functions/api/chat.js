@@ -1,4 +1,5 @@
 import { getAccessJwt } from "../_shared/access.js";
+import { normalizeLegacyChatMessages } from "../_shared/legacyChatPayload.js";
 
 // Optional read-only Notion memories. Credentials belong in Cloudflare Secrets.
 function decodePart(part) {
@@ -67,8 +68,10 @@ export async function onRequestPost({ request, env }) {
   try {
     const raw = await request.text();
 
-    if (raw.length > 250000) {
-      return reply({ error: { message: "请求过大" } }, 413);
+    // Older Safari PWA bundles may still include uncompressed photo data.
+    // Parse within a bounded limit; normalize the outbound copy below.
+    if (raw.length > 10_000_000) {
+      return reply({ error: { message: "单次发送的数据超过上限（10MB）。请重新加载小手机，使用新版图片压缩功能；不要清除网站数据。" } }, 413);
     }
 
     const body = JSON.parse(raw);
@@ -99,7 +102,13 @@ export async function onRequestPost({ request, env }) {
     // Notion pages are imported to each device's durable cache. The client
     // chooses a small relevant excerpt before making this chat request.
     // No Notion network reads or additional prompts happen on this endpoint.
-    const messages = requestMessages;
+    let messages;
+    try {
+      messages = normalizeLegacyChatMessages(requestMessages).messages;
+    } catch (error) {
+      if (error.status === 413) return reply({ error: { message: error.message } }, 413);
+      throw error;
+    }
 
     // Model choice is restricted to verified IDs; never accept arbitrary expensive IDs.
     const supportedModels = new Set([
