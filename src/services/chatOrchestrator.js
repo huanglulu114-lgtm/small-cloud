@@ -19,7 +19,16 @@ export async function resolveChatRole(roleId) {
   const profile = role.apiProfileId
     ? await apiProfileService.getById(role.apiProfileId)
     : (await apiProfileService.getAll())[0];
-  return profile ? { ...role, ...profile, id: role.id, chatSettings: role.chatSettings } : role;
+  // API profiles contain a `name` field (the plan's name). Spreading them
+  // over the character replaces "叶洵" and silently disables character- and
+  // memory-specific prompt behavior. Only copy actual API settings.
+  return profile ? {
+    ...role,
+    apiKey: profile.apiKey || role.apiKey,
+    baseUrl: profile.baseUrl || role.baseUrl,
+    model: profile.model || role.model,
+    apiFormat: profile.apiFormat || role.apiFormat
+  } : role;
 }
 
 const emitCreated = async (callbacks, message) => {
