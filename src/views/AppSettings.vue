@@ -339,7 +339,19 @@
               <div class="item-right"><chevron-right /></div>
             </div>
           </div>
-          <p class="section-hint">先读轻量核心；需要时从 01、02、03、07、08、09 中最多补充两页，限制发送给模型的文字长度。Notion 暂不自动写入。</p>
+          <div class="card-group mt-4">
+            <div class="card-item">
+              <span class="item-label">{{ notionCacheStatus.label }}</span>
+            </div>
+            <div class="card-item no-border" @click="syncNotionCacheNow">
+              <span class="item-label">导入／更新本机 Notion 长期记忆</span>
+              <div class="item-right"><chevron-right /></div>
+            </div>
+          </div>
+          <p class="section-hint">首次把轻量页与六个详细页保存在本机；之后每天只检查更新时间，内容改变才重新读取。聊天从本机按需选取少量相关段落，不再每次请求 Notion。不会自动写回 Notion。</p>
+          <p v-if="notionCacheStatus.lastRecall?.length" class="section-hint">
+            最近一次聊天使用的 Notion 页：{{ notionCacheStatus.lastRecall.join('、') }}
+          </p>
           <p v-if="notionHealth.missing?.length" class="section-hint">
             未授权的详细页：{{ notionHealth.missing.join('、') }}。请在 Notion 给「小手机」集成共享这些页面，或者共享包含它们的总控父页；原来的轻量记忆仍可使用。
           </p>
@@ -391,6 +403,7 @@ import {
 } from '../config/openaiModels';
 import { PROACTIVE_ENABLED_KEY, PROACTIVE_WALLET_KEY } from '../services/proactiveMessages';
 import { getCloudSyncStatus, checkCloudSync, initializeCloudFromThisDevice } from '../services/cloudSync';
+import { getNotionCacheStatus, refreshNotionCacheStatus, syncNotionMemory } from '../services/notionMemoryCache';
 
 const router = useRouter();
 const activePage = ref('main'); 
@@ -517,7 +530,18 @@ const checkNotionHealth = async () => {
 const openDataPage = () => {
   activePage.value = 'data';
   void checkNotionHealth();
+  void refreshNotionCacheStatus();
 };
+const notionCacheStatus = ref(getNotionCacheStatus());
+const onNotionCacheStatus = event => { notionCacheStatus.value = event.detail; };
+const syncNotionCacheNow = async () => {
+  notionCacheStatus.value = await syncNotionMemory({ force: true });
+};
+onMounted(() => {
+  window.addEventListener('smallcloud:notion-cache-status', onNotionCacheStatus);
+  void refreshNotionCacheStatus();
+});
+onUnmounted(() => window.removeEventListener('smallcloud:notion-cache-status', onNotionCacheStatus));
 const syncStatus = ref(getCloudSyncStatus());
 const onSyncStatus = event => { syncStatus.value = event.detail; };
 const syncNow = async () => { syncStatus.value = await checkCloudSync(); };
