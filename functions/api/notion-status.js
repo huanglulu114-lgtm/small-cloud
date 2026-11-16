@@ -1,5 +1,6 @@
 import { accessIdentity, getAccessJwt } from "../_shared/access.js";
 import { notionMemoryPageIds, notionToken } from "../_shared/notionMemory.js";
+import { DETAIL_PAGE_CATALOG } from "../_shared/notionPages.js";
 
 // Only connection health is returned; no page contents or secret keys are exposed.
 export async function onRequestGet({ request, env }) {
@@ -56,12 +57,34 @@ export async function onRequestGet({ request, env }) {
       return reply({ connected: false, reason, status: resp.status });
     }
     const body = await resp.json();
+    // Probe only the first block of each detail page. No personal page text
+    // or secrets are returned to the browser in this health check.
+    const detailResults = await Promise.all(DETAIL_PAGE_CATALOG.map(async page => {
+      try {
+        const check = await fetch(
+          "https://api.notion.com/v1/blocks/" + encodeURIComponent(page.id) +
+            "/children?page_size=1",
+          { headers: { "Authorization": "Bearer " + notionToken(env),
+            "Notion-Version": "2026-03-11" } }
+        );
+        return { key: page.key, readable: check.ok };
+      } catch { return { key: page.key, readable: false }; }
+    }));
+    const readable = detailResults.filter(item => item.readable).length;
     return reply({
       connected: true,
       mode: "read-only",
       pageCount: ids.length,
       previewBlocks: (body.results || []).length,
-      message: "已经成功读取授权的 Notion 记忆页；当前小手机只读，不会自动修改 Notion。"
+      details: {
+        readable,
+        total: detailResults.length,
+        available: detailResults.filter(item => item.readable).map(item => item.key),
+        missing: detailResults.filter(item => !item.readable).map(item => item.key)
+      },
+      message: readable === detailResults.length
+        ? "轻量记忆和 01、02、03、07、08、09 均可按需读取。"
+        : "轻量记忆已连接，但部分详细页面尚未授权给小手机 Notion 集成；请在 Notion 对总控页或这些详细页面授予小手机读取权限。"
     });
   } catch {
     return reply({ connected: false, reason: "连接 Notion 时网络出错" }, 502);
