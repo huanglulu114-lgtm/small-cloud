@@ -165,3 +165,108 @@ export async function onRequestPost({ request, env }) {
     return reply({ error: { message: "接口请求失败" } }, 500);
   }
 }
+
+
+// Read-only diagnosis. GET never creates a completion or reads local chat
+// history. It only checks the same Access gate as POST, verifies that a
+// server-side secret exists, and queries the OpenAI model catalog.
+// Nothing sensitive is returned (no tokens, emails, conversation content,
+// raw OpenAI responses or JWT claims).
+export async function onRequestGet({ request, env }) {
+  const json = (payload, status = 200) => Response.json(payload, {
+    status,
+    headers: {
+      "Cache-Control": "private, no-store, max-age=0",
+      "X-Content-Type-Options": "nosniff",
+      "Pragma": "no-cache"
+    }
+  });
+  const url = new URL(request.url);
+  if (url.searchParams.get("check") !== "1") {
+    return json({ error: "这是聊天 API。无费用连接检测请使用 ?check=1" }, 404);
+  }
+  const version = "chat-health-2026-11-17-v1";
+  const startedAt = Date.now();
+
+  if (!(await verifiedAccess(request, env))) {
+    return json({
+      version,
+      stage: "access",
+      ok: false,
+      message: "Cloudflare Access 登录凭证未通过聊天接口校验。请从正式小手机网页重新完成登录。"
+    }, 403);
+  }
+
+  if (!env.OPENAI_API_KEY) {
+    return json({
+      version,
+      stage: "configuration",
+      ok: false,
+      access: "passed",
+      message: "服务器未设置 OPENAI_API_KEY"
+    }, 503);
+  }
+
+  const allowedModels = [
+    "gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-luna", "gpt-5.6-terra"
+  ];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const upstream = await fetch("https://api.openai.com/v1/models", {
+      method: "GET",
+      headers: { Authorization: "Bearer " + env.OPENAI_API_KEY },
+      signal: controller.signal
+    });
+    const elapsedMs = Date.now() - startedAt;
+    if (!upstream.ok) {
+      const note = upstream.status === 401 ? "OpenAI API 密钥无效或已失效"
+        : upstream.status === 429 ? "OpenAI 接口限制访问，请检查额度或速率限制"
+        : upstream.status === 403 ? "OpenAI 拒绝访问，请检查账号或地区权限"
+        : "OpenAI 模型列表接口返回状态 " + upstream.status;
+      return json({
+        version,
+        stage: "openai",
+        ok: false,
+        access: "passed",
+        openaiStatus: upstream.status,
+        elapsedMs,
+        message: note
+      }, 200);
+    }
+
+    const responseBody = await upstream.json();
+    const availableIds = new Set(
+      Array.isArray(responseBody?.data) ? responseBody.data.map(item => item?.id) : []
+    );
+    const modelAvailability = Object.fromEntries(
+      allowedModels.map(id => [id, availableIds.has(id)])
+    );
+    const visibleModelCount = allowedModels.filter(id => availableIds.has(id)).length;
+    return json({
+      version,
+      stage: "ready",
+      ok: true,
+      access: "passed",
+      openaiStatus: upstream.status,
+      elapsedMs,
+      supportedModelAvailability: modelAvailability,
+      message: visibleModelCount
+        ? "后台能连接 OpenAI；列出各个小手机可选模型是否出现在当前 API 密钥的模型列表里。"
+        : "后台能连接 OpenAI，但小手机当前列出的四个模型均未出现在此 API 密钥的模型列表里；可能是模型名称或权限配置有误。"
+    });
+  } catch (error) {
+    return json({
+      version,
+      stage: "openai_network",
+      ok: false,
+      access: "passed",
+      elapsedMs: Date.now() - startedAt,
+      message: error?.name === "AbortError"
+        ? "Cloudflare 后台连接 OpenAI 超时"
+        : "Cloudflare 后台连接 OpenAI 失败"
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
