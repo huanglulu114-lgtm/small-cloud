@@ -547,13 +547,30 @@ const sendImageMessage = async (file, useOriginal) => {
       ? await compressImage(file, 2048, 0.95)
       : await compressImage(file, 384, 0.8);
 
-    const imageKey = `img_${Date.now()}`;
+    // Keep the user's chosen display quality, but send a separately
+    // compressed copy to the vision model to stay below the 250 KB API limit.
+    const imageKey = `img_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const visionKey = imageKey + '_vision';
+    const visionDataUrl = await compressForVision(file);
     await assetService.set(imageKey, dataUrl);
-    await messageService.create(conversationId, 'user', `[IMAGE:${imageKey}]`, 'image');
+    await assetService.set(visionKey, visionDataUrl);
+    await messageService.create(conversationId, 'user', `[IMAGE:${imageKey}]`, 'image',
+      null, { visionRef: `[IMAGE:${visionKey}]` });
     await loadMessages();
+    scheduleAutoReply();
   } catch (error) {
     alert('图片发送失败: ' + error.message);
   }
+};
+
+// The server has a total JSON request limit, so vision bytes need headroom
+// for the role prompt and recent messages. The displayed original is unchanged.
+const compressForVision = async file => {
+  for (const [size, quality] of [[768, 0.72], [640, 0.62], [512, 0.55], [384, 0.48], [320, 0.42]]) {
+    const dataUrl = await compressImage(file, size, quality);
+    if (dataUrl.length <= 115000) return dataUrl;
+  }
+  return compressImage(file, 256, 0.4);
 };
 
 // 压缩图片：双边限制 + 统一输出 JPEG（PNG 的 quality 参数无效，转 JPEG 才能真正压缩）
