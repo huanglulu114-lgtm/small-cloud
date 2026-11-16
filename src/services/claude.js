@@ -2,6 +2,7 @@
 import { mergeSystemPrompts } from '../config/systemPrompts';
 import { recordApiUsage } from './apiUsage';
 import { fitOpenAIChatPayload, compressVisionDataUrl } from '../utils/chatPayload';
+import { readStreamChunkWithTimeout, readJsonWithTimeout, ReplyTimeoutError } from '../utils/replyTimeout';
 import {
   getSelectedOpenAIModel,
   getSelectedOpenAIReasoningEffort,
@@ -76,12 +77,15 @@ async function fetchWithRetry(url, options, maxRetries = 2, baseDelay = 1000) {
  */
 async function handleAnthropicStream(response, onChunk) {
   const reader = response.body.getReader();
+  const readStartedAt = Date.now();
   const decoder = new TextDecoder();
   let fullText = '';
   let buffer = '';
 
   while (true) {
-    const { done, value } = await reader.read();
+    const remaining = 180000 - (Date.now() - readStartedAt);
+    if (remaining <= 0) throw new ReplyTimeoutError();
+    const { done, value } = await readStreamChunkWithTimeout(reader, Math.min(60000, remaining));
     if (done) break;
 
     const chunk = decoder.decode(value, { stream: true });
@@ -130,6 +134,7 @@ async function handleAnthropicStream(response, onChunk) {
  */
 async function handleOpenAIStream(response, onChunk) {
   const reader = response.body.getReader();
+  const readStartedAt = Date.now();
   const decoder = new TextDecoder();
   let fullText = '';
   let buffer = '';
@@ -162,7 +167,9 @@ async function handleOpenAIStream(response, onChunk) {
   }
 
   while (true) {
-    const { done, value } = await reader.read();
+    const remaining = 180000 - (Date.now() - readStartedAt);
+    if (remaining <= 0) throw new ReplyTimeoutError();
+    const { done, value } = await readStreamChunkWithTimeout(reader, Math.min(60000, remaining));
     if (done) break;
     pending += decoder.decode(value, { stream: true });
     let lineEnd;
@@ -283,11 +290,13 @@ async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onC
     model: getSelectedOpenAIModel(),
     reasoning_effort: getSelectedOpenAIReasoningEffort()
   }, { compressImage: compressVisionDataUrl });
+  // A stalled request should not be silently retried: retries can create
+  // duplicate model charges while the earlier request is still running.
   const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
-  });
+  }, 0);
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
@@ -296,13 +305,17 @@ async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onC
 
   const isSSE = (response.headers.get('Content-Type') || '').includes('text/event-stream');
   if (useStream || isSSE) {
-    return await handleOpenAIStream(response, onChunk);
+    const text = await handleOpenAIStream(response, onChunk);
+    if (!text.trim()) throw new Error('模型本次没有返回文字。请尝试降低推理档位或更换模型后重新生成。');
+    return text;
   }
 
-  const data = await response.json();
+  const data = await readJsonWithTimeout(response);
   recordApiUsage(data.usage, data.model);
   saveSuccessfulOpenAISelection(response, data.model);
-  return data.choices?.[0]?.message?.content || '';
+  const text = data.choices?.[0]?.message?.content || '';
+  if (!String(text).trim()) throw new Error('模型本次没有返回文字。请尝试降低推理档位或更换模型后重新生成。');
+  return text;
 }
 
 export async function callClaudeVision(role, imageBase64, mimeType, contextMessages = []) {
