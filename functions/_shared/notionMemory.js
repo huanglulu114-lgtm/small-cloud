@@ -17,3 +17,5 @@ export function notionMemoryPageIds(env) {
 export function notionToken(env) {
   return env.NOTION_TOKEN || env.notion || env.NOTION || "";
 }
+
+// Redeploy production Pages Functions after the Notion secret was saved.
