@@ -1,6 +1,7 @@
 import { assetService, memoryService, messageService, worldBookEntryService } from './db';
 import { buildEnhancedSystemPrompt } from '../utils/promptBuilder';
 import { buildWorldBookContext } from '../utils/worldBook';
+import { persistentNotionPrompt } from './notionMemoryCache';
 
 export const DEFAULT_CONTEXT_TOKEN_BUDGET = 8000;
 export const MIN_CONTEXT_TOKEN_BUDGET = 2000;
@@ -102,6 +103,10 @@ export async function buildContextPacket(role, options = {}) {
   const tokenBudget = clampBudget(options.tokenBudget ?? settings.contextTokenBudget);
   const maxTurns = Math.max(1, Number(options.maxTurns ?? settings.contextLength) || 15);
   const allMessages = options.contextMessages || await messageService.getContextMessagesByRole(role.id);
+  // Notion pages live in IndexedDB. The first use seeds the cache; ordinary
+  // conversations never make a new Notion request.
+  let notionMemoryText = String(role.name || '').trim() === '叶洵'
+    ? await persistentNotionPrompt(allMessages) : '';
   const query = allMessages.slice(-8).map(message => message.content).join('\n');
   let memories = options.memoryEntries || await memoryService.retrieveForRole(role.id, query, 5);
 
@@ -133,7 +138,7 @@ export async function buildContextPacket(role, options = {}) {
   let rolePromptMaxChars = 12000;
   const promptOptions = () => ({
     ...options, memoryEntries: selectedMemories, worldBookResult: selectedWorldBook, includeDiaries,
-    longTermMemoryMaxChars, coreMemoryMaxChars, rolePromptMaxChars
+    notionMemoryText, longTermMemoryMaxChars, coreMemoryMaxChars, rolePromptMaxChars
   });
   let systemPrompt = await buildEnhancedSystemPrompt(role, allMessages, {
     ...promptOptions()
@@ -151,6 +156,10 @@ export async function buildContextPacket(role, options = {}) {
   }
   if (estimateTokens(systemPrompt) > tokenBudget - minimumMessageReserve && selectedWorldBook.text) {
     selectedWorldBook = { text: '', entries: [] };
+    systemPrompt = await buildEnhancedSystemPrompt(role, allMessages, promptOptions());
+  }
+  if (estimateTokens(systemPrompt) > tokenBudget - minimumMessageReserve && notionMemoryText.length > 700) {
+    notionMemoryText = notionMemoryText.slice(0, 700) + '…';
     systemPrompt = await buildEnhancedSystemPrompt(role, allMessages, promptOptions());
   }
   if (estimateTokens(systemPrompt) > tokenBudget - minimumMessageReserve && longTermMemoryMaxChars) {

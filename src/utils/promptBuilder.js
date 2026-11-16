@@ -83,6 +83,9 @@ export async function buildEnhancedSystemPrompt(role, contextMessages = [], opti
   if (String(role?.name || '').trim() === '叶洵') {
     parts.push(YEXUN_PERSONA_PROMPT);
   }
+  if (options.notionMemoryText) {
+    parts.push(options.notionMemoryText);
+  }
 
   // Global conversational calibration: keep intimate roleplay natural instead of
   // drifting into slogan-like "ideal partner" performance, especially on smaller models.

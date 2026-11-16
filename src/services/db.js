@@ -219,7 +219,9 @@ const messageContentForContext = async (message) => {
   if (WALLET_TYPES.has(message.type)) {
     content = await walletService.describeMessageForContext(message);
   } else if (message.type === 'image') {
-    imageRef = content;
+    // The display image can be large. The model receives its bounded vision
+    // copy, while the chat UI continues to show the original image.
+    imageRef = message.visionRef || content;
     content = '[图片]';
   } else if (message.type === 'sticker') {
     content = '[表情]';
