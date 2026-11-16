@@ -1,6 +1,7 @@
 // Claude API 调用服务
 import { mergeSystemPrompts } from '../config/systemPrompts';
 import { recordApiUsage } from './apiUsage';
+import { fitOpenAIChatPayload, compressVisionDataUrl } from '../utils/chatPayload';
 import {
   getSelectedOpenAIModel,
   getSelectedOpenAIReasoningEffort,
@@ -276,15 +277,16 @@ async function callOpenAIAPI(baseUrl, apiKey, model, systemPrompt, messages, onC
   // 从同源 Cloudflare Pages Function 调用 OpenAI。
   // API Key 只存在 Cloudflare 的 OPENAI_API_KEY Secret 中，不发送到浏览器。
   // 模型由小手机设置控制，服务端再次验证模型 ID 和密钥。
+  const payload = await fitOpenAIChatPayload({
+    messages: openaiMessages,
+    stream: useStream,
+    model: getSelectedOpenAIModel(),
+    reasoning_effort: getSelectedOpenAIReasoningEffort()
+  }, { compressImage: compressVisionDataUrl });
   const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages: openaiMessages,
-      stream: useStream,
-      model: getSelectedOpenAIModel(),
-      reasoning_effort: getSelectedOpenAIReasoningEffort()
-    })
+    body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
@@ -377,14 +379,15 @@ export async function callClaudeVision(role, imageBase64, mimeType, contextMessa
       ? [{ role: 'system', content: finalSystemPrompt }, ...contextMessages, openaiImageMessage]
       : [...contextMessages, openaiImageMessage];
 
+    const payload = await fitOpenAIChatPayload({
+      messages, stream: false,
+      model: getSelectedOpenAIModel(),
+      reasoning_effort: getSelectedOpenAIReasoningEffort()
+    }, { compressImage: compressVisionDataUrl });
     const response = await fetchWithRetry(CHAT_PROXY_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages, stream: false,
-        model: getSelectedOpenAIModel(),
-        reasoning_effort: getSelectedOpenAIReasoningEffort()
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
