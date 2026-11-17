@@ -245,6 +245,7 @@
           <p class="section-hint">下次请求会实际发送：{{ selectedOpenAIModel }} · reasoning_effort={{ selectedReasoningEffort }}。默认保留原来的低档设置；中、高档可能增加耗时与 Token 花费，不会偷偷换回低档。</p>
           <p v-if="lastSuccessfulSelection" class="section-hint">最近一次成功调用：{{ lastSuccessfulSelection.model }} · {{ lastSuccessfulSelection.effort }}（{{ new Date(lastSuccessfulSelection.at).toLocaleString() }}）</p>
           <p v-else class="section-hint">还没有记录到成功调用。模型权限若不允许，API 会报错，不会默默切换其他型号。</p>
+          <chat-connection-check />
           <div class="section-label mt-8">API 方案</div>
           <div class="card-group mt-4">
             <div
@@ -404,6 +405,7 @@ import {
 import { PROACTIVE_ENABLED_KEY, PROACTIVE_WALLET_KEY } from '../services/proactiveMessages';
 import { getCloudSyncStatus, checkCloudSync, initializeCloudFromThisDevice } from '../services/cloudSync';
 import { getNotionCacheStatus, refreshNotionCacheStatus, syncNotionMemory } from '../services/notionMemoryCache';
+import ChatConnectionCheck from '../components/ChatConnectionCheck.vue';
 
 const router = useRouter();
 const activePage = ref('main'); 
