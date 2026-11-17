@@ -61,6 +61,28 @@ export async function onRequestPost({ request, env }) {
       }
     });
 
+  // No-charge POST probe: verify the same Access identity required by a
+  // real chat POST, but return before reading messages or calling OpenAI.
+  // This deliberately accepts no messages and cannot trigger generation.
+  if (new URL(request.url).searchParams.get("probe") === "1") {
+    if (!(await verifiedAccess(request, env))) {
+      return reply({
+        ok: false, stage: "access",
+        message: "聊天 POST 未通过 Cloudflare Access 身份验证"
+      }, 403);
+    }
+    if (!env.OPENAI_API_KEY) {
+      return reply({
+        ok: false, stage: "configuration",
+        message: "服务器未配置 OPENAI_API_KEY"
+      }, 503);
+    }
+    return reply({
+      ok: true, stage: "post",
+      message: "聊天 POST 通道与 Access 身份验证正常；未调用 OpenAI 生成"
+    });
+  }
+
   if (!env.OPENAI_API_KEY) {
     return reply({ error: { message: "API Key 未配置" } }, 503);
   }
