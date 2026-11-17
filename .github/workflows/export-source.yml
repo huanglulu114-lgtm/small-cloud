@@ -1,0 +1,22 @@
+name: Export source for isolated new-phone development
+on:
+  push:
+    branches: [export/full-feature-source-for-new-phone]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package source without credentials or .git
+        shell: bash
+        run: |
+          mkdir -p /tmp/source
+          tar -czf /tmp/new-phone-source.tar.gz --exclude=.git --exclude=node_modules --exclude=dist --exclude=.env --exclude=.env.local --exclude='*.key' --exclude='*.pem' .
+          cp /tmp/new-phone-source.tar.gz /tmp/source/new-phone-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: new-phone-source-bundle
+          path: /tmp/source/new-phone-source.tar.gz
+          retention-days: 1
