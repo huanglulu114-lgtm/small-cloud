@@ -42,3 +42,25 @@ jobs:
                     'REDIRECT_HOST:',redir or 'none','CONTENT_MARKERS:',signals)
               if result.returncode: print('NETWORK_ERROR:',result.stderr[:250])
           PY
+      - name: Follow anonymous Cloudflare Access login redirects
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess,tempfile,pathlib,urllib.parse,re
+          target="https://small-cloud-2zs.pages.dev/"
+          with tempfile.TemporaryDirectory() as td:
+            headers=str(pathlib.Path(td)/'headers')
+            body=str(pathlib.Path(td)/'body')
+            p=subprocess.run([
+              'curl','--location','--max-redirs','6','--max-time','20',
+              '--silent','--show-error','--output',body,'--dump-header',headers,
+              '--write-out','FINAL_STATUS=%{http_code};FINAL_TYPE=%{content_type};FINAL_URL=%{url_effective};BYTES=%{size_download}',target],
+              stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            raw=p.stdout
+            raw=re.sub(r'FINAL_URL=[^;]*',lambda m:'FINAL_HOST='+str(urllib.parse.urlparse(m.group(0)[10:]).hostname),raw)
+            b=pathlib.Path(body).read_bytes() if pathlib.Path(body).exists() else b''
+            title=re.search(rb'<title[^>]*>([^<]{0,120})</title>',b,re.I)
+            t=title.group(1).decode('utf-8','replace') if title else 'none'
+            print('LOGIN_CHAIN:',raw,'EXIT:',p.returncode,'PAGE_TITLE:',t)
+            if p.returncode: print('NETWORK_ERROR:',p.stderr[:180])
+          PY
