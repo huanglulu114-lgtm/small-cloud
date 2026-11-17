@@ -1,0 +1,44 @@
+name: Probe production site over public network (no secrets)
+on:
+  push:
+    branches: [diagnostics/public-site-http-probe]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check DNS and anonymous HTTP status only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import socket,subprocess,tempfile,pathlib,re,urllib.parse
+          host='small-cloud-2zs.pages.dev'
+          try:
+            addresses=socket.getaddrinfo(host,443)
+            print('DNS: resolved; addresses:',len(set(a[4][0] for a in addresses)))
+          except Exception as e:
+            print('DNS: FAILED',type(e).__name__,str(e)[:160])
+          for path in ('/','/api/diagnose','/api/chat?check=1'):
+            url='https://'+host+path
+            with tempfile.TemporaryDirectory() as td:
+              head=str(pathlib.Path(td)/'headers')
+              body=str(pathlib.Path(td)/'body')
+              cmd=['curl','--max-time','18','--connect-timeout','9','--http1.1',
+                   '--silent','--show-error','--output',body,'--dump-header',head,
+                   '--write-out','STATUS=%{http_code};TYPE=%{content_type};BYTES=%{size_download}',
+                   url]
+              result=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+              headers=pathlib.Path(head).read_text(errors='replace') if pathlib.Path(head).exists() else ''
+              content=pathlib.Path(body).read_bytes() if pathlib.Path(body).exists() else b''
+              location=re.findall(r'^location:\s*(.*)$',headers,re.I|re.M)
+              redir=urllib.parse.urlparse(location[-1].strip()).hostname if location else None
+              signals=[signal for signal in
+                ['小手机 · 连接检测','正在打开本地小手机','Cloudflare Access','Sign in','Access denied']
+                if signal.encode('utf-8') in content]
+              print('PATH:',path,'RESULT:',result.stdout,'EXIT:',result.returncode,
+                    'REDIRECT_HOST:',redir or 'none','CONTENT_MARKERS:',signals)
+              if result.returncode: print('NETWORK_ERROR:',result.stderr[:250])
+          PY
