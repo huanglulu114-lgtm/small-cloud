@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#EDEDED">
   <title>小手机</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
-  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+  <!-- Optional runtime styles must never block the chat application startup. -->
+  <script async src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" media="print" onload="this.media='all'">
   <style>
     * {
       margin: 0;
@@ -19,10 +20,46 @@
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
+    #startup-fallback {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: #ededed;
+      color: #393939;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      text-align: center;
+    }
+    #startup-fallback > section { max-width: 330px; line-height: 1.7; }
+    #startup-fallback h1 { font-size: 20px; margin-bottom: 12px; }
+    #startup-fallback p { font-size: 14px; color: #777; }
+    #startup-fallback a { color: #2b7ac2; display: inline-block; margin-top: 12px; font-size: 14px; }
+    #startup-fallback .issue { display: none; }
+    #startup-fallback.failed .issue { display: block; }
+    #startup-fallback.failed .waiting { display: none; }
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <div id="startup-fallback" role="status">
+      <section>
+        <h1>小手机</h1>
+        <p class="waiting">正在打开本地小手机……</p>
+        <p class="issue">网页程序没能正常启动。请勿删除浏览器网站数据或聊天记录。</p>
+        <a class="issue" href="/api/diagnose">检查网站连接</a>
+      </section>
+    </div>
+  </div>
+  <script>
+    // The Vue app replaces #app on successful mount, automatically removing
+    // this fallback. This only changes the loading UI, not IndexedDB data.
+    window.setTimeout(function () {
+      var hint = document.getElementById('startup-fallback');
+      if (hint) hint.classList.add('failed');
+    }, 12000);
+  </script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
